@@ -1,0 +1,4 @@
+*.npy
+.idea
+*.pyc
+*.npz
