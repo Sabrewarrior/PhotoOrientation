@@ -1,0 +1,83 @@
+Start time: 1471438024
+
+nature:
+L train: 82 test: 5 valid: 5
+P train: 108 test: 7 valid: 7
+beach:
+L train: 98 test: 6 valid: 6
+P train: 291 test: 17 valid: 17
+night:
+L train: 101 test: 6 valid: 6
+P train: 144 test: 9 valid: 9
+yellow:
+L train: 129 test: 8 valid: 8
+P train: 79 test: 5 valid: 5
+tree:
+L train: 155 test: 9 valid: 9
+P train: 288 test: 17 valid: 16
+people:
+L train: 83246 test: 4625 valid: 4625
+P train: 48456 test: 2693 valid: 2693
+cat:
+L train: 92 test: 6 valid: 6
+P train: 105 test: 6 valid: 6
+landscape:
+L train: 4252 test: 237 valid: 237
+P train: 6571 test: 366 valid: 366
+summer:
+L train: 8424 test: 468 valid: 468
+P train: 7343 test: 408 valid: 408
+street:
+L train: 396 test: 23 valid: 22
+P train: 1539 test: 86 valid: 86
+winter:
+L train: 12285 test: 683 valid: 683
+P train: 10963 test: 610 valid: 610
+dog:
+L train: 331 test: 19 valid: 19
+P train: 478 test: 27 valid: 27
+garden:
+L train: 91 test: 6 valid: 6
+P train: 110 test: 7 valid: 7
+water:
+L train: 155 test: 9 valid: 9
+P train: 451 test: 26 valid: 26
+party:
+L train: 2785 test: 155 valid: 155
+P train: 2525 test: 141 valid: 141
+park:
+L train: 1500 test: 84 valid: 84
+P train: 2890 test: 161 valid: 161
+new:
+L train: 427 test: 24 valid: 24
+P train: 725 test: 41 valid: 41
+car:
+L train: 52 test: 3 valid: 3
+P train: 183 test: 11 valid: 11
+river:
+L train: 7643 test: 425 valid: 425
+P train: 6987 test: 389 valid: 389
+sea:
+L train: 55 test: 4 valid: 4
+P train: 226 test: 13 valid: 13
+house:
+L train: 116 test: 7 valid: 7
+P train: 347 test: 20 valid: 20
+bridge:
+L train: 49 test: 3 valid: 3
+P train: 238 test: 14 valid: 14
+trees:
+L train: 78 test: 5 valid: 5
+P train: 139 test: 8 valid: 8
+sunset:
+L train: 79 test: 5 valid: 5
+P train: 134 test: 8 valid: 8
+lake:
+L train: 4898 test: 273 valid: 273
+P train: 4986 test: 278 valid: 278
+city:
+L train: 85 test: 5 valid: 5
+P train: 233 test: 13 valid: 13
+
+Total time: 3203.84781504
+Training set: {'270': 56013, '0': 56054, '180': 56032, '90': 56044}
