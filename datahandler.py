@@ -8,7 +8,7 @@ from skimage.color import rgb2gray
 import numpy as np
 from skimage.feature import hog
 from skimage import exposure
-import cPickle
+import pickle
 from skimage.transform import rotate
 from PIL import Image
 
@@ -22,19 +22,19 @@ def save_pickle(out_dir, tag_name, count_total, img_train_dict, hog_train_dict, 
         img_valid_dict[key] = np.asarray(img_valid_dict[key], dtype=float32)
         hog_valid_dict[key] = np.asarray(hog_valid_dict[key], dtype=float32)
 
-    print "Saving " + tag_name
+    print("Saving " + tag_name)
     with open(os.path.join(out_dir,"train", "images", tag_name+".pkl"), "wb") as img_train_file:
-        cPickle.dump(img_train_dict, img_train_file, protocol=2)
+        pickle.dump(img_train_dict, img_train_file, protocol=2)
     with open(os.path.join(out_dir, "train", "hog", tag_name + ".pkl"), "wb") as hog_train_file:
-        cPickle.dump(hog_train_dict, hog_train_file, protocol=2)
+        pickle.dump(hog_train_dict, hog_train_file, protocol=2)
     with open(os.path.join(out_dir, "test", "images", tag_name + ".pkl"), "wb") as img_test_file:
-        cPickle.dump(img_test_dict, img_test_file, protocol=2)
+        pickle.dump(img_test_dict, img_test_file, protocol=2)
     with open(os.path.join(out_dir, "test", "hog", tag_name + ".pkl"), "wb") as hog_test_file:
-        cPickle.dump(hog_test_dict, hog_test_file, protocol=2)
+        pickle.dump(hog_test_dict, hog_test_file, protocol=2)
     with open(os.path.join(out_dir, "valid", "images", tag_name + ".pkl"), "wb") as img_valid_file:
-        cPickle.dump(img_valid_dict, img_valid_file, protocol=2)
+        pickle.dump(img_valid_dict, img_valid_file, protocol=2)
     with open(os.path.join(out_dir, "valid", "hog", tag_name + ".pkl"), "wb") as hog_valid_file:
-        cPickle.dump(hog_valid_dict, hog_valid_file, protocol=2)
+        pickle.dump(hog_valid_dict, hog_valid_file, protocol=2)
 
 
 def normalizeArray(imageArray, resizeDims = (224,224), RGBtoBW = False):
@@ -158,7 +158,7 @@ def handler(image_dir, out_dir, save_array=False, visualise = False):
                 img_valid_dict = {}
                 hog_valid_dict = {}
             if dirname is not "P" and dirname is not "L" and dirname.count('Meta') == 0:
-                print dirname + ":"
+                print(dirname + ":")
                 for root_inner, dirnames_inner, filenames_inner in os.walk(os.path.join(root,dirname)):
                     for dirname_inner in ["L","P"]:
                         for root_actual, dirnames_extra, filenames_actual in os.walk(os.path.join(root_inner,dirname_inner)):
@@ -211,8 +211,6 @@ def handler(image_dir, out_dir, save_array=False, visualise = False):
                                         make_train(image,hog_fd,str(degrees),out_dir,dirname,dirname_inner,filename)
                                 count_total+=1
 
-
-
                                 if visualise:
                                     hog_meta_path = os.path.join(image_dir, dirname + "Meta", dirname_inner)
                                     if not os.path.exists(hog_meta_path):
@@ -223,16 +221,16 @@ def handler(image_dir, out_dir, save_array=False, visualise = False):
                                 if save_array and count_total % num_imgs == 0:
                                     num_cur = str(
                                         int(math.ceil((count_total + (num_imgs - count_total) % num_imgs) / num_imgs)))
-                                    print dirname_inner + num_cur + " train: " + str(
+                                    print( dirname_inner + num_cur + " train: " + str(
                                         count_total - count_test - count_valid) \
-                                          + " test: " + str(count_test) + " valid: " + str(count_valid)
+                                          + " test: " + str(count_test) + " valid: " + str(count_valid))
                                     save_pickle(out_dir, dirname + dirname_inner + num_cur, count_total, img_train_dict,
                                                 hog_train_dict, img_test_dict, hog_test_dict, img_valid_dict,
                                                 hog_valid_dict)
 
-                        print dirname_inner + " train: " + str(
+                        print(dirname_inner + " train: " + str(
                             count_total - count_test - count_valid) \
-                              + " test: " + str(count_test) + " valid: " + str(count_valid)
+                              + " test: " + str(count_test) + " valid: " + str(count_valid))
 
                         if save_array:
                             save_pickle(out_dir, dirname + dirname_inner + num_cur, count_total, img_train_dict,
@@ -241,21 +239,21 @@ def handler(image_dir, out_dir, save_array=False, visualise = False):
 
                     break
         break
-    print time.time() - t
-    print counter
-    print count_total, count_test, count_valid
+    print(time.time() - t)
+    print(counter)
+    print(count_total, count_test, count_valid)
 
 def load_train(data_folder, tag, type, number, hog=False):
     if hog:
         if os.path.exists(os.path.join(data_folder, "train", "hog",tag+type+number+".pkl")):
             with open(os.path.join(data_folder, "train", "hog", tag + type + number + ".pkl"),'r') as f:
-                return cPickle.load(f)
+                return pickle.load(f)
         else:
             return None
     else:
         if os.path.exists(os.path.join(data_folder, "train", "images", tag + type + number + ".pkl")):
             with open(os.path.join(data_folder, "train", "images", tag + type + number + ".pkl"),'r') as f:
-                return cPickle.load(f)
+                return pickle.load(f)
         else:
             return None
 
@@ -263,13 +261,13 @@ def load_test(data_folder, tag, type, number, hog=False):
     if hog:
         if os.path.exists(os.path.join(data_folder, "test", "hog", tag + type + number + ".pkl")):
             with open(os.path.join(data_folder, "test", "hog", tag + type + number + ".pkl"), 'r') as f:
-                return cPickle.load(f)
+                return pickle.load(f)
         else:
             return None
     else:
         if os.path.exists(os.path.join(data_folder, "test", "images", tag + type + number + ".pkl")):
             with open(os.path.join(data_folder, "test", "images", tag + type + number + ".pkl"), 'r') as f:
-                return cPickle.load(f)
+                return pickle.load(f)
         else:
             return None
 
@@ -277,13 +275,13 @@ def load_valid(data_folder, tag, type, number, hog=False):
     if hog:
         if os.path.exists(os.path.join(data_folder, "valid", "hog", tag + type + number + ".pkl")):
             with open(os.path.join(data_folder, "valid", "hog", tag + type + number + ".pkl"), 'r') as f:
-                return cPickle.load(f)
+                return pickle.load(f)
         else:
             return None
     else:
         if os.path.exists(os.path.join(data_folder, "valid", "images", tag + type + number + ".pkl")):
             with open(os.path.join(data_folder, "valid", "images", tag + type + number + ".pkl"), 'r') as f:
-                return cPickle.load(f)
+                return pickle.load(f)
         else:
             return None
 
@@ -307,9 +305,9 @@ def resize_batch(input_folder,out_folder, resizeDims=(224,224)):
 if __name__ == "__main__":
     t = int(time.time())
     # t = 1454219613
-    print "t=", t
+    print("t=", t)
     seed(t)
 
     #resize_batch("/home/ujash/images_flickr/down1","/home/ujash/images_flickr/down4")
 
-    handler("/home/ujash/nvme/down4","/home/ujash/nvme/data2")
+    #handler("/home/ujash/nvme/down4","/home/ujash/nvme/data2")

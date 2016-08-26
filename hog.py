@@ -3,34 +3,49 @@ import time
 import random
 from datahandler import load_test, load_train
 import os
+import pickle
 import tensorflow as tf
+from skimage.feature import hog
+from skimage.color import rgb2gray
+from tensorflow.python.framework import dtypes, ops
 
 t = int(time.time())
-#t = 1454219613
-print "t=", t
+# t = 1454219613
+print("t=", t)
 random.seed(t)
 
+
+'''
 def read_my_file_format(filename_queue):
     reader = tf.WholeFileReader()
     key, record_string = reader.read(filename_queue[0])
     image = tf.image.decode_jpeg(record_string)
     label = filename_queue[1]
     return image, label
+'''
 
 
 def read_hog_file_format(filename_queue):
-
-    print(filename_queue)
-    filename, label = tf.decode_csv(filename_queue,[[""], [""]], " ")
-    image = tf.read_file(filename)
-
-
+    #print(filename_queue)
+    image = tf.read_file(filename_queue[0])
+    label = tf.cast(filename_queue[1], tf.int32)
+    #image = tf.image.decode_jpeg(record_string)
+    #print(image)
+    #bwimage = rgb2gray(image)
+    #hog_features = hog(bwimage, orientations=9, pixels_per_cell=(16, 16),
+    #                              cells_per_block=(1, 1), visualise=False)
     return image, label
 
-def create_labeled_image_list(directory):
+
+def create_labeled_image_list(directory, data_set="train", feature="images"):
     image_list = []
-    #label_list = []
+    label_list = []
+    directory = os.path.join(directory, data_set, feature)
+    limit = 0
+    if not os.path.exists(directory):
+        print("Feature or dataset does not exist")
     for root, dirnames, filenames in os.walk(directory):
+        print("Loading images from: " + root)
         for dirname in dirnames:
             if dirname == '0':
                 label = 0
@@ -40,20 +55,28 @@ def create_labeled_image_list(directory):
                 label = 2
             else:
                 label = 3
-            for root, dirnames_inner, filenames_actual in os.walk(os.path.join(root,dirname)):
+            for root_inner, dirnames_inner, filenames_actual in os.walk(os.path.join(root, dirname)):
                 for filename in filenames_actual:
-                    image_list.append(filename+ " " + str(label))
-                    #label_list.append(label)
-        break
-    return image_list
 
-def input_pipeline(directory, batch_size, num_epochs=None):
+                    if data_set == "test":
+                        if limit == 12000:
+                            break
+                    image_list.append(os.path.join(root_inner,filename))
+                    label_list.append(label)
+                    limit+=1
+        break
+
+    print(str(len(image_list)) + " images loaded")
+    return image_list, label_list
+
+
+def input_pipeline(directory, batch_size, data_set="train", feature="images", num_epochs=None):
     with tf.name_scope('input'):
         # Reads paths of images together with their labels
-        image_list = create_labeled_image_list(directory)
+        image_list, label_list = create_labeled_image_list(directory, data_set=data_set, feature="hog")
 
         # Makes an input queue
-        input_queue = tf.train.string_input_producer(image_list)
+        input_queue = tf.train.slice_input_producer([image_list, label_list],num_epochs=num_epochs)
         image, label = read_hog_file_format(input_queue)
 
         # min_after_dequeue defines how big a buffer we will randomly sample
@@ -64,108 +87,186 @@ def input_pipeline(directory, batch_size, num_epochs=None):
         #   min_after_dequeue + (num_threads + a small safety margin) * batch_size
         min_after_dequeue = 10000
         capacity = min_after_dequeue + 3 * batch_size
-        image_batch, label_batch = tf.train.shuffle_batch([image, label], batch_size=batch_size, capacity=capacity,
-                                                  min_after_dequeue=min_after_dequeue, num_threads=10)
+        if data_set== "train":
+            image_batch, label_batch = tf.train.shuffle_batch([image, label], batch_size=batch_size, capacity=capacity,
+                                                          min_after_dequeue=min_after_dequeue, num_threads=1)
+        else:
+            image_batch, label_batch = tf.train.batch([image, label], batch_size=batch_size, capacity=capacity,
+                                  num_threads=1)
         return image_batch, label_batch
 
 
-def layer(x, weights, biases):
-    return tf.nn.tanh(tf.add(tf.matmul(x, weights), biases))
+def convert_binary_to_array(image_binary_list):
+    images = []
+    #print(image_binary_list)
+    for image_binary in image_binary_list:
+        images.append(np.fromstring(image_binary,dtype=np.float64))
+    return images
 
-def initWeightBias(x_dims, y_dims, weights=None, biases=None):
-    if not weights:
-        weights = tf.Variable(tf.random_normal([x_dims, y_dims], stddev=0.01))
-    if not biases:
-        biases = tf.Variable(tf.random_normal([y_dims], stddev=0.01))
-    return weights, biases
 
-def hog1layer(batchSize, learningRate, data_folder):
-    sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))
+# TODO: Normalize HOG
 
+def hog1layer(batchSize, learningRate, data_folder, snapshot = None):
+    hog = True
+    feature_num = 1774
+    hid = 2560
     with tf.Graph().as_default():
+        sess = tf.Session()#config=tf.ConfigProto(log_device_placement=True))
         globalStep = tf.Variable(0, name='global_step', trainable=False)
 
-        x = tf.placeholder(tf.float32, shape=(batchSize,1764))
-        y_ = tf.placeholder(tf.int32,shape=(batchSize))
-
         # Use for test sets
-        testy = tf.placeholder(tf.int32, [None, ])
-        testx = tf.placeholder(tf.float32, [None, 1764])
+        testy = tf.placeholder(tf.int32, [None, ], name="Test_y")
+        # xtest = tf.placeholder(tf.float32, [None, 1764])
+        x = tf.placeholder(tf.float32, shape=(batchSize,feature_num), name="Input")
+        y_ = tf.placeholder(tf.int32,shape=(batchSize), name="Output")
 
-        image_batch, label_batch = input_pipeline(os.path.join(data_folder,"train"), batchSize, num_epochs=None)
+        image_batch, label_batch = input_pipeline(data_folder, batchSize, data_set="train", feature="hog")
+        test_images, test_labels = input_pipeline(data_folder, 10, data_set="test", feature="hog")
+        with tf.device('/cpu:0'):
+            if not snapshot:
+                print("1")
+                w0 = tf.Variable(tf.random_normal([feature_num, hid], dtype=tf.float32, stddev=1e-1))
+                b0 = tf.Variable(tf.random_normal([hid], dtype=tf.float32, stddev=1e-1))
+        layer1l = tf.add(tf.matmul(x, w0), b0)
+        layer1 = tf.nn.tanh(layer1l)
+        with tf.device('/cpu:0'):
+            if not snapshot:
+                print("2")
+                w1 = tf.Variable(tf.random_normal([hid, 4], dtype=tf.float32, stddev=1e-1))
+                b1 = tf.Variable(tf.random_normal([4], dtype=tf.float32, stddev=1e-1))
+        prediction = tf.add(tf.matmul(layer1, w1), b1)
 
-        W0, b0 = initWeightBias(x.shape[1], 2560)
-        layer1 = layer(x, W0, b0)
 
-        W1, b1 = initWeightBias(2560, 4)
-        pred = layer(layer1, W1, b1)
 
-        lam = 0.00000
-        decay_penalty = tf.add(tf.mul(lam, tf.reduce_sum(tf.square(W0))), tf.mul(lam, tf.reduce_sum(tf.square(W1))))
-        entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(pred, y_)
-        cost = tf.add(tf.reduce_mean(entropy), decay_penalty)
+        #lam = 0.00000
+        #decay_penalty = tf.add(tf.mul(lam, tf.reduce_sum(tf.square(w0))), tf.mul(lam, tf.reduce_sum(tf.square(w1))))
+        entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(prediction, tf.to_int64(y_))
+        #cost = tf.add(tf.reduce_mean(entropy), decay_penalty)
+        cost = tf.reduce_mean(entropy)
 
-        train_step = tf.train.GradientDescentOptimizer(learningRate).minimize(cost, global_step=globalStep)
+        train_step = tf.train.AdamOptimizer(learningRate).minimize(cost, global_step=globalStep)
 
-        correct_prediction = tf.equal(tf.argmax(pred, 1), tf.cast(testy, tf.int64))
+        correct_prediction = tf.equal(tf.argmax(prediction, 1), tf.to_int64(testy))
         accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
         init = tf.initialize_all_variables()
-
         sess.run(init)
 
-        test_x, test_y = input_pipeline(os.path.join(data_folder,"test"), batchSize, num_epochs=1)
+        # test_x, test_y = input_pipeline(os.path.join(data_folder, "test"), batchSize, num_epochs=1)
 
-        timers = []
-        time_train = []
+        timers = {"batching": 0., "converting": 0., "training": 0., "testing":0., "acc":0., "total_tests": 0.}
+        # time_train = []
         time_run = []
-
+        snapshot = {}
         coord = tf.train.Coordinator()
-
         threads = tf.train.start_queue_runners(sess=sess, coord=coord)
-
+        steps = 0
         try:
-            steps = 0
             while not coord.should_stop():
 
                 now = time.time()
+                imgs, labels = sess.run([image_batch, label_batch])
+                timers["batching"] += (time.time() - now)
 
-                sess.run(train_step, feed_dict={x: image_batch, y_: label_batch},)
-                time_run.append(time.time() - now)
+                now = time.time()
+                imgs = convert_binary_to_array(imgs)
+                timers["converting"] += (time.time() - now)
+                for images in imgs:
+                    print(np.max(images))
+                break
+                print(sess.run(w0))
+                print(sess.run(b0))
+                print(sess.run(layer1l, feed_dict={x: imgs, y_: labels}))
+                '''
+                print(sess.run(layer1, feed_dict={x: imgs, y_: labels}))
+                print(sess.run(w1))
+                print(sess.run(b1))
+                print(sess.run(prediction, feed_dict={x: imgs, y_: labels}))
+                print(sess.run(entropy, feed_dict={x: imgs, y_: labels}))
+                print(sess.run(cost, feed_dict={x: imgs, y_: labels}))
+                '''
+                now = time.time()
+                sess.run(train_step, feed_dict={x: imgs, y_: labels})
+                timers["training"] += (time.time() - now)
+                break
                 steps += 1
-                print(globalStep)
-                if steps % 1000 == 0:
+                #print(globalStep)
+                if steps % 10 == 0:
+                    break
+                    print(steps)
                     # print(batch_y)
-                    #print("steps=" + str(steps))
+                    # print("steps=" + str(steps))
                     # for i in range(10):
-                    #temp = sess.run(accuracy, feed_dict={x: image_batch, y_: label_batch})
+                    # temp = sess.run(accuracy, feed_dict={x: image_batch, y_: label_batch})
 
-                    print "Test:", sess.run(accuracy, feed_dict={x: test_x, testy: test_y})
-                    print "Train:", sess.run(accuracy, feed_dict={x: image_batch, testy: label_batch})
-                    #print "Penalty:", sess.run(decay_penalty)
+                    #print("Test:", sess.run(accuracy, feed_dict={x: test_x, testy: test_y}))
+
+                    print(labels.shape)
+                    print(labels.dtype)
+                    print(labels)
+                    print(imgs[0])
+                    print(sess.run(w0))
+                    print(sess.run(b0))
+                    print(sess.run(layer1, feed_dict={x: imgs, y_: labels}))
+                    print(sess.run(prediction, feed_dict={x: imgs, y_: labels}))
+                    print(sess.run(entropy, feed_dict={x: imgs, y_: labels}))
+                    break
 
 
+                    print("Train: " + str(sess.run(accuracy, feed_dict={x: imgs, testy: labels})))
+                    acc = 0.
+                    total_test = 0
+                    now = time.time()
+                    for i in range(1200):
+                        imgs_test, labels_test = sess.run([test_images, test_labels])
+                        imgs_test = convert_binary_to_array(imgs_test)
+                        total_test += len(imgs_test)
+                        #print(imgs[-1].shape)
+                        acc += sess.run(accuracy, feed_dict={x: imgs_test, testy: labels_test})
+                    timers["testing"] += (time.time() - now)
+                    timers["total_tests"] += 1
+                    #print("Total tested: " + str(total_test))
+                    print("Test: " + str(acc/1200))
+
+                    # print "Penalty:", sess.run(decay_penalty)
+                    if steps%10000 == 0:
+                        snapshot["w0"] = sess.run(w0)
+                        snapshot["w1"] = sess.run(w1)
+                        snapshot["b0"] = sess.run(b0)
+                        snapshot["b1"] = sess.run(b1)
+                        pickle.dump(snapshot,
+                                open(os.path.join(data_folder, "snapshotHOG" + str(steps // 10000) + ".pkl"), "wb"))
+                    if (acc/12)>.8:
+                        break
                     # snapshot = {}
-                    # snapshot["W0"] = sess.run(W0)
-                    # snapshot["W1"] = sess.run(W1)
-                    # snapshot["b0"] = sess.run(b0)
-                    # snapshot["b1"] = sess.run(b1)
-                    # cPickle.dump(snapshot,  open("new_snapshot"+str(i)+".pkl", "w"))
-                timers.append(time.time() - now)
+                #timers.append(time.time() - now)
         except tf.errors.OutOfRangeError:
             print('Done training -- epoch limit reached')
         finally:
             # When done, ask the threads to stop.
             coord.request_stop()
-
         coord.join(threads)
 
+        snapshot["w0"] = sess.run(w0)
+        snapshot["w1"] = sess.run(w1)
+        snapshot["b0"] = sess.run(b0)
+        snapshot["b1"] = sess.run(b1)
+        pickle.dump(snapshot,
+                    open(os.path.join(data_folder, "snapshotHOGFinal.pkl"), "wb"))
+
         sess.close()
+        for timer in timers.keys():
+            if timer.count("acc") == 0:
+                print(timer + " avg: " + str(timers[timer]/steps))
+        print("acc avg: " + str(timers["acc"]/timers["total_tests"]))
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
+
     data_folder = "/home/ujash/nvme/data2"
-    hog1layer(1000, .0001, data_folder)
+
+    hog1layer(10, .000001, data_folder)
+
 '''
 
 im1 = (imread("421.jpg")[:,:,:3]).astype(float32)
