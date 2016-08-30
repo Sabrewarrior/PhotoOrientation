@@ -3,7 +3,6 @@ import math
 import time
 from random import shuffle, seed
 from scipy.misc import imread, imsave
-from pylab import float32
 from skimage.color import rgb2gray
 import numpy as np
 from skimage.feature import hog
@@ -12,15 +11,55 @@ import pickle
 from skimage.transform import rotate
 from PIL import Image
 
+def convert_binary_to_array(image_binary_list):
+    images = []
+    #print(image_binary_list)
+    for image_binary in image_binary_list:
+        images.append(pickle.loads(image_binary))
+    return images
+
+
+def create_labeled_image_list(directory, data_set="train", feature="images", images_limit=12000):
+    image_list = []
+    label_list = []
+    directory = os.path.join(directory, data_set, feature)
+    limit = 0
+    if not os.path.exists(directory):
+        print("Feature or dataset does not exist")
+    for root, dirnames, filenames in os.walk(directory):
+        print("Loading images from: " + root)
+        for dirname in dirnames:
+            if dirname == '0':
+                label = 0
+            elif dirname == '90':
+                label = 1
+            elif dirname == '180':
+                label = 2
+            else:
+                label = 3
+            for root_inner, dirnames_inner, filenames_actual in os.walk(os.path.join(root, dirname)):
+                for filename in filenames_actual:
+                    if data_set == "test" or data_set == "valid":
+                        if limit == images_limit:
+                            break
+                    image_list.append(os.path.join(root_inner,filename))
+                    label_list.append(label)
+                    limit+=1
+        break
+
+    print(str(len(image_list)) + " images loaded")
+    return image_list, label_list
+
+
 def save_pickle(out_dir, tag_name, count_total, img_train_dict, hog_train_dict, img_test_dict, hog_test_dict,
                 img_valid_dict, hog_valid_dict):
     for key in img_train_dict.keys():
-        img_train_dict[key] = np.asarray(img_train_dict[key], dtype=float32)
-        hog_train_dict[key] = np.asarray(hog_train_dict[key], dtype=float32)
-        img_test_dict[key] = np.asarray(img_test_dict[key], dtype=float32)
-        hog_test_dict[key] = np.asarray(hog_test_dict[key], dtype=float32)
-        img_valid_dict[key] = np.asarray(img_valid_dict[key], dtype=float32)
-        hog_valid_dict[key] = np.asarray(hog_valid_dict[key], dtype=float32)
+        img_train_dict[key] = np.asarray(img_train_dict[key], dtype=np.float32)
+        hog_train_dict[key] = np.asarray(hog_train_dict[key], dtype=np.float32)
+        img_test_dict[key] = np.asarray(img_test_dict[key], dtype=np.float32)
+        hog_test_dict[key] = np.asarray(hog_test_dict[key], dtype=np.float32)
+        img_valid_dict[key] = np.asarray(img_valid_dict[key], dtype=np.float32)
+        hog_valid_dict[key] = np.asarray(hog_valid_dict[key], dtype=np.float32)
 
     print("Saving " + tag_name)
     with open(os.path.join(out_dir,"train", "images", tag_name+".pkl"), "wb") as img_train_file:
@@ -83,6 +122,7 @@ def make_train(image, hog_fd, degrees, out_dir, dirname, dirname_inner, filename
     np.save(os.path.join(hog_out_path,filename[:-4]),hog_fd)
     imsave(os.path.join(image_out_path,filename),image,format='JPEG')
 
+
 # Rotates counter-clockwise
 def rotate_image(imageArray, degrees):
     if degrees !=0:
@@ -90,19 +130,22 @@ def rotate_image(imageArray, degrees):
     else:
         return imageArray
 
+
 def generate_arrays(imageArray,visualise):
     image_to_hog = imageArray / 255.
     image_to_hog = rgb2gray(image_to_hog)
     if visualise:
         hog_features, hog_image = hog(image_to_hog, orientations=9, pixels_per_cell=(16, 16),
                         cells_per_block=(1, 1), visualise = True)
-        hog_features = hog_features.astype(float32)
+        hog_features = hog_features.astype(np.float32)
         hog_image_rescaled = exposure.rescale_intensity(hog_image, in_range=(0, 0.02))
     else:
         hog_features = hog(image_to_hog, orientations=9, pixels_per_cell=(16, 16),
                                       cells_per_block=(1, 1), visualise=False)
+        hog_fd = hog_features.astype(np.float32)
         hog_image_rescaled = None
-    return hog_features, hog_image_rescaled
+    return hog_fd, hog_image_rescaled
+
 
 def save_image(imageArray, path):
     #np.save(os.path.join(path[:-4]), hog_features)
@@ -115,6 +158,7 @@ def load_image(image_file_path, PIL_image=False):
     else:
         imageArray = imread(image_file_path)
     return imageArray
+
 
 def handler(image_dir, out_dir, save_array=False, visualise = False):
     if not os.path.exists(out_dir):
@@ -140,7 +184,6 @@ def handler(image_dir, out_dir, save_array=False, visualise = False):
         os.makedirs(os.path.join(out_dir, "valid", "images"))
     if not os.path.exists(os.path.join(out_dir, "valid","hog")):
         os.makedirs(os.path.join(out_dir, "valid", "hog"))
-
 
     count_total = 0
     t = time.time()
@@ -243,6 +286,7 @@ def handler(image_dir, out_dir, save_array=False, visualise = False):
     print(counter)
     print(count_total, count_test, count_valid)
 
+
 def load_train(data_folder, tag, type, number, hog=False):
     if hog:
         if os.path.exists(os.path.join(data_folder, "train", "hog",tag+type+number+".pkl")):
@@ -256,6 +300,7 @@ def load_train(data_folder, tag, type, number, hog=False):
                 return pickle.load(f)
         else:
             return None
+
 
 def load_test(data_folder, tag, type, number, hog=False):
     if hog:
@@ -271,6 +316,7 @@ def load_test(data_folder, tag, type, number, hog=False):
         else:
             return None
 
+
 def load_valid(data_folder, tag, type, number, hog=False):
     if hog:
         if os.path.exists(os.path.join(data_folder, "valid", "hog", tag + type + number + ".pkl")):
@@ -284,6 +330,7 @@ def load_valid(data_folder, tag, type, number, hog=False):
                 return pickle.load(f)
         else:
             return None
+
 
 def resize_batch(input_folder,out_folder, resizeDims=(224,224)):
     os.mkdir(out_folder)
@@ -302,12 +349,42 @@ def resize_batch(input_folder,out_folder, resizeDims=(224,224)):
                                 imageArray.save(os.path.join(out_folder,dirname,dirname_inner,filename),'JPEG')
 
 
+# image_folder_depth: /home/sample/data/images/label1/label2/label3/image.jpg has a value of 3.
+# ie. Number of folders after images folder
+def hog_batch(input_folder, out_folder, image_folder_depth=3,label="hog"):
+    corrupted = []
+    for data_set in ["test","train","valid"]:
+        image_list, label_list = create_labeled_image_list(input_folder,data_set=data_set,images_limit=50000)
+        count = 0
+        for images in image_list:
+            remaining = os.path.split(images)
+            outpath = remaining[1]
+
+            for i in range(image_folder_depth):
+                remaining = os.path.split(remaining[0])
+                outpath = os.path.join(remaining[1],outpath)
+            outpath = os.path.join(out_folder,data_set,label,outpath)
+            if not os.path.exists(os.path.split(outpath)[0]):
+                os.makedirs(os.path.split(outpath)[0])
+            img = load_image(images)
+            hog_fd, hod_image = generate_arrays(img, False)
+            pickle.dump(hog_fd,open(outpath[:-4]+'.npy',"wb"))
+
+            test_str = open(outpath[:-4]+'.npy','rb').read()
+            test = pickle.loads(test_str)
+            if (sum(hog_fd - test) > 0.00001):
+                print("File " + outpath[:-4]+ ".npy is corrupt")
+                corrupted.append(outpath[:-4]+".npy")
+            count+= 1
+        print(count)
+    pickle.dump(corrupted, open(os.path.join(out_folder,"invalid_hog.log"),"wb"))
+
 if __name__ == "__main__":
     t = int(time.time())
     # t = 1454219613
     print("t=", t)
     seed(t)
-
+    #hog_batch("/home/ujash/nvme/data2","/home/ujash/nvme/data2", label="hog2")
     #resize_batch("/home/ujash/images_flickr/down1","/home/ujash/images_flickr/down4")
 
     #handler("/home/ujash/nvme/down4","/home/ujash/nvme/data2")

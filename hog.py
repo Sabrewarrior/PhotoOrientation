@@ -1,7 +1,7 @@
 import numpy as np
 import time
 import random
-from datahandler import load_test, load_train
+from datahandler import create_labeled_image_list, convert_binary_to_array
 import os
 import pickle
 import tensorflow as tf
@@ -26,54 +26,15 @@ def read_my_file_format(filename_queue):
 
 
 def read_hog_file_format(filename_queue):
-    #print(filename_queue)
     image = tf.read_file(filename_queue[0])
     label = tf.cast(filename_queue[1], tf.int32)
-    #image = tf.image.decode_jpeg(record_string)
-    #print(image)
-    #bwimage = rgb2gray(image)
-    #hog_features = hog(bwimage, orientations=9, pixels_per_cell=(16, 16),
-    #                              cells_per_block=(1, 1), visualise=False)
     return image, label
-
-
-def create_labeled_image_list(directory, data_set="train", feature="images"):
-    image_list = []
-    label_list = []
-    directory = os.path.join(directory, data_set, feature)
-    limit = 0
-    if not os.path.exists(directory):
-        print("Feature or dataset does not exist")
-    for root, dirnames, filenames in os.walk(directory):
-        print("Loading images from: " + root)
-        for dirname in dirnames:
-            if dirname == '0':
-                label = 0
-            elif dirname == '90':
-                label = 1
-            elif dirname == '180':
-                label = 2
-            else:
-                label = 3
-            for root_inner, dirnames_inner, filenames_actual in os.walk(os.path.join(root, dirname)):
-                for filename in filenames_actual:
-
-                    if data_set == "test":
-                        if limit == 12000:
-                            break
-                    image_list.append(os.path.join(root_inner,filename))
-                    label_list.append(label)
-                    limit+=1
-        break
-
-    print(str(len(image_list)) + " images loaded")
-    return image_list, label_list
 
 
 def input_pipeline(directory, batch_size, data_set="train", feature="images", num_epochs=None):
     with tf.name_scope('input'):
         # Reads paths of images together with their labels
-        image_list, label_list = create_labeled_image_list(directory, data_set=data_set, feature="hog")
+        image_list, label_list = create_labeled_image_list(directory, data_set=data_set, feature=feature)
 
         # Makes an input queue
         input_queue = tf.train.slice_input_producer([image_list, label_list],num_epochs=num_epochs)
@@ -96,41 +57,31 @@ def input_pipeline(directory, batch_size, data_set="train", feature="images", nu
         return image_batch, label_batch
 
 
-def convert_binary_to_array(image_binary_list):
-    images = []
-    #print(image_binary_list)
-    for image_binary in image_binary_list:
-        images.append(np.fromstring(image_binary,dtype=np.float64))
-    return images
-
-
-# TODO: Normalize HOG
-
-def hog1layer(batchSize, learningRate, data_folder, snapshot = None):
+# TODO: Normalize HOG?
+def hog1layer(batchSize, learningRate, data_folder, snapshot = None, feature="hog"):
     hog = True
-    feature_num = 1774
+    feature_num = 1764
     hid = 2560
     with tf.Graph().as_default():
-        sess = tf.Session()#config=tf.ConfigProto(log_device_placement=True))
+        sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))
         globalStep = tf.Variable(0, name='global_step', trainable=False)
 
         # Use for test sets
         testy = tf.placeholder(tf.int32, [None, ], name="Test_y")
         # xtest = tf.placeholder(tf.float32, [None, 1764])
-        x = tf.placeholder(tf.float32, shape=(batchSize,feature_num), name="Input")
+        x = tf.placeholder(tf.float32, shape=(None,feature_num), name="Input")
         y_ = tf.placeholder(tf.int32,shape=(batchSize), name="Output")
 
-        image_batch, label_batch = input_pipeline(data_folder, batchSize, data_set="train", feature="hog")
-        test_images, test_labels = input_pipeline(data_folder, 10, data_set="test", feature="hog")
-        with tf.device('/cpu:0'):
-            if not snapshot:
+        image_batch, label_batch = input_pipeline(data_folder, batchSize, data_set="train", feature=feature)
+        test_images, test_labels = input_pipeline(data_folder, 1000, data_set="test", feature=feature)
+        #with tf.device('/cpu:0'):
+        if not snapshot:
                 print("1")
                 w0 = tf.Variable(tf.random_normal([feature_num, hid], dtype=tf.float32, stddev=1e-1))
                 b0 = tf.Variable(tf.random_normal([hid], dtype=tf.float32, stddev=1e-1))
         layer1l = tf.add(tf.matmul(x, w0), b0)
         layer1 = tf.nn.tanh(layer1l)
-        with tf.device('/cpu:0'):
-            if not snapshot:
+        if not snapshot:
                 print("2")
                 w1 = tf.Variable(tf.random_normal([hid, 4], dtype=tf.float32, stddev=1e-1))
                 b1 = tf.Variable(tf.random_normal([4], dtype=tf.float32, stddev=1e-1))
@@ -171,28 +122,14 @@ def hog1layer(batchSize, learningRate, data_folder, snapshot = None):
                 now = time.time()
                 imgs = convert_binary_to_array(imgs)
                 timers["converting"] += (time.time() - now)
-                for images in imgs:
-                    print(np.max(images))
-                break
-                print(sess.run(w0))
-                print(sess.run(b0))
-                print(sess.run(layer1l, feed_dict={x: imgs, y_: labels}))
-                '''
-                print(sess.run(layer1, feed_dict={x: imgs, y_: labels}))
-                print(sess.run(w1))
-                print(sess.run(b1))
-                print(sess.run(prediction, feed_dict={x: imgs, y_: labels}))
-                print(sess.run(entropy, feed_dict={x: imgs, y_: labels}))
-                print(sess.run(cost, feed_dict={x: imgs, y_: labels}))
-                '''
+
                 now = time.time()
                 sess.run(train_step, feed_dict={x: imgs, y_: labels})
                 timers["training"] += (time.time() - now)
-                break
                 steps += 1
                 #print(globalStep)
-                if steps % 10 == 0:
-                    break
+                if steps % 1000 == 0:
+
                     print(steps)
                     # print(batch_y)
                     # print("steps=" + str(steps))
@@ -201,23 +138,12 @@ def hog1layer(batchSize, learningRate, data_folder, snapshot = None):
 
                     #print("Test:", sess.run(accuracy, feed_dict={x: test_x, testy: test_y}))
 
-                    print(labels.shape)
-                    print(labels.dtype)
-                    print(labels)
-                    print(imgs[0])
-                    print(sess.run(w0))
-                    print(sess.run(b0))
-                    print(sess.run(layer1, feed_dict={x: imgs, y_: labels}))
-                    print(sess.run(prediction, feed_dict={x: imgs, y_: labels}))
-                    print(sess.run(entropy, feed_dict={x: imgs, y_: labels}))
-                    break
-
 
                     print("Train: " + str(sess.run(accuracy, feed_dict={x: imgs, testy: labels})))
                     acc = 0.
                     total_test = 0
                     now = time.time()
-                    for i in range(1200):
+                    for i in range(12):
                         imgs_test, labels_test = sess.run([test_images, test_labels])
                         imgs_test = convert_binary_to_array(imgs_test)
                         total_test += len(imgs_test)
@@ -226,7 +152,7 @@ def hog1layer(batchSize, learningRate, data_folder, snapshot = None):
                     timers["testing"] += (time.time() - now)
                     timers["total_tests"] += 1
                     #print("Total tested: " + str(total_test))
-                    print("Test: " + str(acc/1200))
+                    print("Test: " + str(acc/12))
 
                     # print "Penalty:", sess.run(decay_penalty)
                     if steps%10000 == 0:
@@ -236,7 +162,7 @@ def hog1layer(batchSize, learningRate, data_folder, snapshot = None):
                         snapshot["b1"] = sess.run(b1)
                         pickle.dump(snapshot,
                                 open(os.path.join(data_folder, "snapshotHOG" + str(steps // 10000) + ".pkl"), "wb"))
-                    if (acc/12)>.8:
+                    if (acc/120)>.95:
                         break
                     # snapshot = {}
                 #timers.append(time.time() - now)
@@ -265,7 +191,7 @@ if __name__ == "__main__":
 
     data_folder = "/home/ujash/nvme/data2"
 
-    hog1layer(10, .000001, data_folder)
+    hog1layer(100, .0001, data_folder, feature="hog2")
 
 '''
 
