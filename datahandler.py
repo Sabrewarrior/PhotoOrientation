@@ -19,7 +19,7 @@ def convert_binary_to_array(image_binary_list):
     return images
 
 
-def create_labeled_image_list(directory, data_set="train", feature="images", images_limit=12000):
+def create_labeled_image_list(directory, data_set="train", feature="images", num_images=None):
     image_list = []
     label_list = []
     directory = os.path.join(directory, data_set, feature)
@@ -39,8 +39,8 @@ def create_labeled_image_list(directory, data_set="train", feature="images", ima
                 label = 3
             for root_inner, dirnames_inner, filenames_actual in os.walk(os.path.join(root, dirname)):
                 for filename in filenames_actual:
-                    if data_set == "test" or data_set == "valid":
-                        if limit == images_limit:
+                    if num_images is not None:
+                        if limit == num_images:
                             break
                     image_list.append(os.path.join(root_inner,filename))
                     label_list.append(label)
@@ -137,7 +137,7 @@ def generate_arrays(imageArray,visualise):
     if visualise:
         hog_features, hog_image = hog(image_to_hog, orientations=9, pixels_per_cell=(16, 16),
                         cells_per_block=(1, 1), visualise = True)
-        hog_features = hog_features.astype(np.float32)
+        hog_fd = hog_features.astype(np.float32)
         hog_image_rescaled = exposure.rescale_intensity(hog_image, in_range=(0, 0.02))
     else:
         hog_features = hog(image_to_hog, orientations=9, pixels_per_cell=(16, 16),
@@ -184,7 +184,7 @@ def handler(image_dir, out_dir, save_array=False, visualise = False):
         os.makedirs(os.path.join(out_dir, "valid", "images"))
     if not os.path.exists(os.path.join(out_dir, "valid","hog")):
         os.makedirs(os.path.join(out_dir, "valid", "hog"))
-
+    num_cur = 0
     count_total = 0
     t = time.time()
     num_imgs = 10000
@@ -354,7 +354,7 @@ def resize_batch(input_folder,out_folder, resizeDims=(224,224)):
 def hog_batch(input_folder, out_folder, image_folder_depth=3,label="hog"):
     corrupted = []
     for data_set in ["test","train","valid"]:
-        image_list, label_list = create_labeled_image_list(input_folder,data_set=data_set,images_limit=50000)
+        image_list, label_list = create_labeled_image_list(input_folder,data_set=data_set)
         count = 0
         for images in image_list:
             remaining = os.path.split(images)
@@ -372,7 +372,7 @@ def hog_batch(input_folder, out_folder, image_folder_depth=3,label="hog"):
 
             test_str = open(outpath[:-4]+'.npy','rb').read()
             test = pickle.loads(test_str)
-            if (sum(hog_fd - test) > 0.00001):
+            if sum(hog_fd - test) > 0.00001:
                 print("File " + outpath[:-4]+ ".npy is corrupt")
                 corrupted.append(outpath[:-4]+".npy")
             count+= 1

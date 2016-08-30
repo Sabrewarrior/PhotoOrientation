@@ -183,11 +183,11 @@ def AlexNet():
 
     for input_im_ind in range(output.shape[0]):
         inds = argsort(output)[input_im_ind, :]
-        print "Image", input_im_ind
+        print("Image", input_im_ind)
         for i in range(5):
-            print class_names[inds[-1 - i]], output[input_im_ind, inds[-1 - i]]
+            print(class_names[inds[-1 - i]], output[input_im_ind, inds[-1 - i]])
 
-    print time.time() - t
+    print(time.time() - t)
 
 def conv(input, kernel, biases, k_h, k_w, c_o, s_h, s_w, padding="VALID", group=1):
     '''From https://github.com/ethereon/caffe-tensorflow

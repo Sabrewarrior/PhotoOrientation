@@ -31,10 +31,11 @@ def read_hog_file_format(filename_queue):
     return image, label
 
 
-def input_pipeline(directory, batch_size, data_set="train", feature="images", num_epochs=None):
+def input_pipeline(directory, batch_size, data_set="train", feature="images", num_epochs=None, num_images=None):
     with tf.name_scope('input'):
         # Reads paths of images together with their labels
-        image_list, label_list = create_labeled_image_list(directory, data_set=data_set, feature=feature)
+        image_list, label_list = create_labeled_image_list(directory, data_set=data_set, feature=feature,
+                                                           num_images=num_images)
 
         # Makes an input queue
         input_queue = tf.train.slice_input_producer([image_list, label_list],num_epochs=num_epochs)
@@ -48,7 +49,7 @@ def input_pipeline(directory, batch_size, data_set="train", feature="images", nu
         #   min_after_dequeue + (num_threads + a small safety margin) * batch_size
         min_after_dequeue = 10000
         capacity = min_after_dequeue + 3 * batch_size
-        if data_set== "train":
+        if data_set.count("train") == 1:
             image_batch, label_batch = tf.train.shuffle_batch([image, label], batch_size=batch_size, capacity=capacity,
                                                           min_after_dequeue=min_after_dequeue, num_threads=1)
         else:
@@ -58,8 +59,7 @@ def input_pipeline(directory, batch_size, data_set="train", feature="images", nu
 
 
 # TODO: Normalize HOG?
-def hog1layer(batchSize, learningRate, data_folder, snapshot = None, feature="hog"):
-    hog = True
+def hog1layer(batch_size, learning_rate, data_folder, snapshot = None, feature="hog"):
     feature_num = 1764
     hid = 2560
     with tf.Graph().as_default():
@@ -70,21 +70,29 @@ def hog1layer(batchSize, learningRate, data_folder, snapshot = None, feature="ho
         testy = tf.placeholder(tf.int32, [None, ], name="Test_y")
         # xtest = tf.placeholder(tf.float32, [None, 1764])
         x = tf.placeholder(tf.float32, shape=(None,feature_num), name="Input")
-        y_ = tf.placeholder(tf.int32,shape=(batchSize), name="Output")
+        y_ = tf.placeholder(tf.int32,shape=(batch_size), name="Output")
 
-        image_batch, label_batch = input_pipeline(data_folder, batchSize, data_set="train", feature=feature)
-        test_images, test_labels = input_pipeline(data_folder, 1000, data_set="test", feature=feature)
+        image_batch, label_batch = input_pipeline(data_folder, batch_size, data_set="train", feature=feature)
+        test_images, test_labels = input_pipeline(data_folder, 1000, data_set="test", feature=feature, num_images=12000)
+        valid_images, valid_labels = input_pipeline(data_folder, 1000, data_set="valid", feature=feature,
+                                                    num_images=12000)
         #with tf.device('/cpu:0'):
         if not snapshot:
-                print("1")
-                w0 = tf.Variable(tf.random_normal([feature_num, hid], dtype=tf.float32, stddev=1e-1))
-                b0 = tf.Variable(tf.random_normal([hid], dtype=tf.float32, stddev=1e-1))
+            print("1")
+            w0 = tf.Variable(tf.random_normal([feature_num, hid], dtype=tf.float32, stddev=1e-1))
+            b0 = tf.Variable(tf.random_normal([hid], dtype=tf.float32, stddev=1e-1))
+        else:
+            w0 = tf.Variable(snapshot["w0"])
+            b0 = tf.Variable(snapshot["b0"])
         layer1l = tf.add(tf.matmul(x, w0), b0)
         layer1 = tf.nn.tanh(layer1l)
         if not snapshot:
-                print("2")
-                w1 = tf.Variable(tf.random_normal([hid, 4], dtype=tf.float32, stddev=1e-1))
-                b1 = tf.Variable(tf.random_normal([4], dtype=tf.float32, stddev=1e-1))
+            print("2")
+            w1 = tf.Variable(tf.random_normal([hid, 4], dtype=tf.float32, stddev=1e-1))
+            b1 = tf.Variable(tf.random_normal([4], dtype=tf.float32, stddev=1e-1))
+        else:
+            w1 = tf.Variable(snapshot["w1"])
+            b1 = tf.Variable(snapshot["b1"])
         prediction = tf.add(tf.matmul(layer1, w1), b1)
 
 
@@ -95,7 +103,7 @@ def hog1layer(batchSize, learningRate, data_folder, snapshot = None, feature="ho
         #cost = tf.add(tf.reduce_mean(entropy), decay_penalty)
         cost = tf.reduce_mean(entropy)
 
-        train_step = tf.train.AdamOptimizer(learningRate).minimize(cost, global_step=globalStep)
+        train_step = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(cost, global_step=globalStep)
 
         correct_prediction = tf.equal(tf.argmax(prediction, 1), tf.to_int64(testy))
         accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
@@ -106,8 +114,7 @@ def hog1layer(batchSize, learningRate, data_folder, snapshot = None, feature="ho
         # test_x, test_y = input_pipeline(os.path.join(data_folder, "test"), batchSize, num_epochs=1)
 
         timers = {"batching": 0., "converting": 0., "training": 0., "testing":0., "acc":0., "total_tests": 0.}
-        # time_train = []
-        time_run = []
+
         snapshot = {}
         coord = tf.train.Coordinator()
         threads = tf.train.start_queue_runners(sess=sess, coord=coord)
@@ -129,15 +136,7 @@ def hog1layer(batchSize, learningRate, data_folder, snapshot = None, feature="ho
                 steps += 1
                 #print(globalStep)
                 if steps % 1000 == 0:
-
                     print(steps)
-                    # print(batch_y)
-                    # print("steps=" + str(steps))
-                    # for i in range(10):
-                    # temp = sess.run(accuracy, feed_dict={x: image_batch, y_: label_batch})
-
-                    #print("Test:", sess.run(accuracy, feed_dict={x: test_x, testy: test_y}))
-
 
                     print("Train: " + str(sess.run(accuracy, feed_dict={x: imgs, testy: labels})))
                     acc = 0.
@@ -147,22 +146,26 @@ def hog1layer(batchSize, learningRate, data_folder, snapshot = None, feature="ho
                         imgs_test, labels_test = sess.run([test_images, test_labels])
                         imgs_test = convert_binary_to_array(imgs_test)
                         total_test += len(imgs_test)
-                        #print(imgs[-1].shape)
                         acc += sess.run(accuracy, feed_dict={x: imgs_test, testy: labels_test})
                     timers["testing"] += (time.time() - now)
                     timers["total_tests"] += 1
-                    #print("Total tested: " + str(total_test))
+
                     print("Test: " + str(acc/12))
 
-                    # print "Penalty:", sess.run(decay_penalty)
                     if steps%10000 == 0:
+                        acc_valid = 0.
+                        for i in range(12):
+                            imgs_valid, labels_valid = sess.run([valid_images, valid_labels])
+                            imgs_valid = convert_binary_to_array(imgs_valid)
+                            acc_valid += sess.run(accuracy, feed_dict={x: imgs_valid, testy: labels_valid})
+                        print("Valid: " + str(acc_valid/12))
                         snapshot["w0"] = sess.run(w0)
                         snapshot["w1"] = sess.run(w1)
                         snapshot["b0"] = sess.run(b0)
                         snapshot["b1"] = sess.run(b1)
                         pickle.dump(snapshot,
                                 open(os.path.join(data_folder, "snapshotHOG" + str(steps // 10000) + ".pkl"), "wb"))
-                    if (acc/120)>.95:
+                    if (acc/12)>.99:
                         break
                     # snapshot = {}
                 #timers.append(time.time() - now)
@@ -189,9 +192,9 @@ def hog1layer(batchSize, learningRate, data_folder, snapshot = None, feature="ho
 
 if __name__ == "__main__":
 
-    data_folder = "/home/ujash/nvme/data2"
-
-    hog1layer(100, .0001, data_folder, feature="hog2")
+    datafolder = "/home/ujash/nvme/data2"
+    M = pickle.load(open(os.path.join(datafolder,"snapshotHOG458.pkl"),'rb'))
+    hog1layer(1000, .00001, datafolder, feature="hog2", snapshot=M)
 
 '''
 
