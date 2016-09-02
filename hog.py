@@ -164,7 +164,7 @@ def hog1layer(batch_size, learning_rate, data_folder, snapshot = None, feature="
                         snapshot["b0"] = sess.run(b0)
                         snapshot["b1"] = sess.run(b1)
                         pickle.dump(snapshot,
-                                open(os.path.join(data_folder, "snapshotHOG" + str(steps // 10000) + ".pkl"), "wb"))
+                                open(os.path.join(data_folder, "snapshot1000H" + str(steps // 10000) + ".pkl"), "wb"))
                     if (acc/12)>.99:
                         break
                     # snapshot = {}
