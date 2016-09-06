@@ -8,18 +8,22 @@
 # Weights from Caffe converted using https://github.com/ethereon/caffe-tensorflow      #
 ########################################################################################
 
-import tensorflow as tf
 import numpy as np
 from scipy.misc import imread, imresize
 from imagenet_classes import class_names
+import os
+import tensorflow as tf
 
 
 class vgg16:
-    def __init__(self, imgs, weights=None, sess=None):
+    def __init__(self, imgs, y_, learning_rate, global_step=None, weights=None, sess=None):
         self.imgs = imgs
         self.convlayers()
         self.fc_layers()
         self.probs = tf.nn.softmax(self.fc3l)
+        entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(self.fc3l, tf.to_int64(y_))
+        cost = tf.reduce_mean(entropy)
+        self.train_step = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(cost, global_step=global_step)
         if weights is not None and sess is not None:
             self.load_weights(weights, sess)
 
@@ -245,22 +249,33 @@ class vgg16:
             self.fc3l = tf.nn.bias_add(tf.matmul(self.fc2, fc3w), fc3b)
             self.parameters += [fc3w, fc3b]
 
-    def load_weights(self, weight_file, sess):
+    def load_weights(self, weight_file_name, sess):
+        if os.path.exists(weight_file_name):
+            print("Path exists")
+        weight_file = open(weight_file_name,'rb')
         weights = np.load(weight_file)
         keys = sorted(weights.keys())
         for i, k in enumerate(keys):
             print(i, k, np.shape(weights[k]))
             sess.run(self.parameters[i].assign(weights[k]))
+        weight_file.close()
 
 if __name__ == '__main__':
     sess = tf.Session()
-    imgs = tf.placeholder(tf.float32, [None, 224, 224, 3])
-    vgg = vgg16(imgs, 'vgg16_weights.npz', sess)
+    batchSize = 1000
+    globalStep = tf.Variable(0, name='global_step', trainable=False)
+    imgs = tf.placeholder(tf.float32, shape=(None, 224, 224, 3), name="Inputs")
+    y_ = tf.placeholder(tf.int32,shape=(batchSize), name="Outputs")
+    learning_rate = .0001
+    vgg = vgg16(imgs, y_, learning_rate, global_step=globalStep, weights='vgg16_weights.npz', sess=sess)
+    test = False
+    if test:
+        img1 = imread('laska.png', mode='RGB')
+        img1 = imresize(img1, (224, 224))
 
-    img1 = imread('laska.png', mode='RGB')
-    img1 = imresize(img1, (224, 224))
+        prob = sess.run(vgg.probs, feed_dict={vgg.imgs: [img1]})[0]
+        preds = (np.argsort(prob)[::-1])[0:5]
+        for p in preds:
+            print(class_names[p], prob[p])
 
-    prob = sess.run(vgg.probs, feed_dict={vgg.imgs: [img1]})[0]
-    preds = (np.argsort(prob)[::-1])[0:5]
-    for p in preds:
-        print(class_names[p], prob[p])
+

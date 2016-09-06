@@ -10,6 +10,51 @@ from skimage import exposure
 import pickle
 from skimage.transform import rotate
 from PIL import Image
+import tensorflow as tf
+
+
+'''
+def read_my_file_format(filename_queue):
+    reader = tf.WholeFileReader()
+    key, record_string = reader.read(filename_queue[0])
+    image = tf.image.decode_jpeg(record_string)
+    label = filename_queue[1]
+    return image, label
+'''
+
+
+def read_file_format(filename_queue):
+    image = tf.read_file(filename_queue[0])
+    label = tf.cast(filename_queue[1], tf.int32)
+    return image, label
+
+
+def input_pipeline(directory, batch_size, data_set="train", feature="images", num_epochs=None, num_images=None):
+    with tf.name_scope('InputPipeline'):
+        # Reads paths of images together with their labels
+        image_list, label_list = create_labeled_image_list(directory, data_set=data_set, feature=feature,
+                                                           num_images=num_images)
+
+        # Makes an input queue
+        input_queue = tf.train.slice_input_producer([image_list, label_list],num_epochs=num_epochs)
+        image, label = read_file_format(input_queue)
+
+        # min_after_dequeue defines how big a buffer we will randomly sample
+        #   from -- bigger means better shuffling but slower start up and more
+        #   memory used.
+        # capacity must be larger than min_after_dequeue and the amount larger
+        #   determines the maximum we will prefetch.  Recommendation:
+        #   min_after_dequeue + (num_threads + a small safety margin) * batch_size
+        min_after_dequeue = 10000
+        capacity = min_after_dequeue + 3 * batch_size
+        if data_set.count("train") == 1:
+            image_batch, label_batch = tf.train.shuffle_batch([image, label], batch_size=batch_size, capacity=capacity,
+                                                          min_after_dequeue=min_after_dequeue, num_threads=1)
+        else:
+            image_batch, label_batch = tf.train.batch([image, label], batch_size=batch_size, capacity=capacity,
+                                  num_threads=1)
+        return image_batch, label_batch
+
 
 def convert_binary_to_array(image_binary_list):
     images = []
@@ -92,6 +137,7 @@ def normalizeArray(imageArray, resizeDims = (224,224), RGBtoBW = False):
 
     return normArray
 
+
 def make_valid(image, hog_fd, degrees, out_dir, dirname, dirname_inner, filename):
     image_out_path = os.path.join(out_dir, "valid", "images", degrees, dirname, dirname_inner)
     hog_out_path = os.path.join(out_dir, "valid", "hog", degrees, dirname, dirname_inner)
@@ -102,6 +148,7 @@ def make_valid(image, hog_fd, degrees, out_dir, dirname, dirname_inner, filename
     np.save(os.path.join(hog_out_path, filename[:-4]), hog_fd)
     imsave(os.path.join(image_out_path, filename), image, format='JPEG')
 
+
 def make_test(image, hog_fd, degrees, out_dir, dirname, dirname_inner, filename):
     image_out_path = os.path.join(out_dir, "test", "images", degrees, dirname, dirname_inner)
     hog_out_path = os.path.join(out_dir, "test", "hog", degrees, dirname, dirname_inner)
@@ -111,6 +158,7 @@ def make_test(image, hog_fd, degrees, out_dir, dirname, dirname_inner, filename)
         os.makedirs(hog_out_path)
     np.save(os.path.join(hog_out_path, filename[:-4]), hog_fd)
     imsave(os.path.join(image_out_path, filename), image, format='JPEG')
+
 
 def make_train(image, hog_fd, degrees, out_dir, dirname, dirname_inner, filename):
     image_out_path = os.path.join(out_dir, "train", "images", degrees, dirname, dirname_inner)

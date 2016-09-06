@@ -1,0 +1,120 @@
+import vgg16
+import hog
+import alexnet
+import pickle
+import os
+import time
+import tensorflow as tf
+from datahandler import input_pipeline, read_file_format, create_labeled_image_list, convert_binary_to_array
+
+
+def hog1layer(batch_size, weights=None, sess=None, global_step=None):
+    return hog.LayeredNetwork(batch_size, 1764, 4, [(2560,tf.nn.tanh)],0.00001,global_step=global_step,weights = weights,sess=sess)
+
+
+def run_model(model):
+    timers = {"batching": 0., "converting": 0., "training": 0., "testing":0., "acc":0., "total_tests": 0.}
+
+    snapshot = {}
+    coord = tf.train.Coordinator()
+    threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+    steps = 0
+    try:
+        while not coord.should_stop():
+
+            now = time.time()
+            imgs, labels = sess.run([image_batch, label_batch])
+            timers["batching"] += (time.time() - now)
+
+            now = time.time()
+            imgs = convert_binary_to_array(imgs)
+            timers["converting"] += (time.time() - now)
+
+            if steps % 1000 == 0:
+                print(steps)
+                print("Train: " + str(sess.run(model.acc, feed_dict={model.inputs: imgs, model.testy: labels})))
+
+            now = time.time()
+            sess.run(model.train_step, feed_dict={model.inputs: imgs, model.labels: labels})
+            timers["training"] += (time.time() - now)
+            steps += 1
+
+            print(sess.run(model.global_step))
+            if steps % 1000 == 0:
+                acc = 0.
+                total_test = 0
+                now = time.time()
+                for i in range(12):
+                    imgs_test, labels_test = sess.run([test_images, test_labels])
+                    imgs_test = convert_binary_to_array(imgs_test)
+                    total_test += len(imgs_test)
+                    acc += sess.run(model.acc, feed_dict={model.inputs: imgs_test, model.testy: labels_test})
+                timers["testing"] += (time.time() - now)
+                timers["total_tests"] += 1
+
+                print("Test: " + str(acc/12))
+
+                if steps%10000 == 0:
+                    acc_valid = 0.
+                    for i in range(12):
+                        imgs_valid, labels_valid = sess.run([valid_images, valid_labels])
+                        imgs_valid = convert_binary_to_array(imgs_valid)
+                        acc_valid += sess.run(model.acc,
+                                              feed_dict={model.inputs: imgs_valid, model.testy: labels_valid})
+
+                    print("Valid: " + str(acc_valid/12))
+
+                    for key in model.parameters.keys():
+                        snapshot[key] = sess.run(model.parameters[key])
+
+                    pickle.dump(snapshot,
+                            open(os.path.join(data_folder, "snapshot1000H" + str(steps // 10000) + ".pkl"), "wb"))
+                if (acc/12)>.99:
+                    break
+                # snapshot = {}
+            #timers.append(time.time() - now)
+    except tf.errors.OutOfRangeError:
+        print('Done training -- epoch limit reached')
+    finally:
+        # When done, ask the threads to stop.
+        coord.request_stop()
+    coord.join(threads)
+
+    for key in model.parameters.keys():
+        snapshot[key] = sess.run(model.parameters[key])
+
+    pickle.dump(snapshot,
+                open(os.path.join(data_folder, "snapshotHOGFinal.pkl"), "wb"))
+
+    sess.close()
+    for timer in timers.keys():
+        if timer.count("acc") == 0:
+            print(timer + " avg: " + str(timers[timer]/steps))
+    print("acc avg: " + str(timers["acc"]/timers["total_tests"]))
+
+
+if __name__ == "__main__":
+    batch_size = 1000
+
+    data_folder = "/home/ujash/nvme/data2"
+
+    M = pickle.load(open(os.path.join(data_folder,"snapshotHOG458.pkl"),'rb'))
+    keys = sorted(M.keys())
+    weights = {}
+    weights["w0"] = M["w0"]
+    weights["b0"] = M["b0"]
+
+    weights["wOutput"] = M["w1"]
+    weights["bOutput"] = M["b1"]
+
+    global_step = tf.Variable(0, name='global_step', trainable=False)
+    sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))
+    hog_net = hog1layer(batch_size, weights=weights, sess=sess, global_step = global_step)
+
+    feature="hog2"
+    image_batch, label_batch = input_pipeline(data_folder, batch_size, data_set="train", feature=feature)
+    test_images, test_labels = input_pipeline(data_folder, 1000, data_set="test", feature=feature, num_images=12000)
+    valid_images, valid_labels = input_pipeline(data_folder, 1000, data_set="valid", feature=feature, num_images=12000)
+
+    init = tf.initialize_all_variables()
+    sess.run(init)
