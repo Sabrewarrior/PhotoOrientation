@@ -97,8 +97,11 @@ if __name__ == "__main__":
     batch_size = 1000
 
     data_folder = "/home/ujash/nvme/data2"
+    if os.path.exists(data_folder):
+        M = pickle.load(open(os.path.join(data_folder,"snapshotHOG458.pkl"),'rb'))
+    else:
+        M = pickle.load(open("snapshotHOG458.pkl",'rb'))
 
-    M = pickle.load(open(os.path.join(data_folder,"snapshotHOG458.pkl"),'rb'))
     keys = sorted(M.keys())
     weights = {}
     weights["w0"] = M["w0"]
@@ -118,3 +121,5 @@ if __name__ == "__main__":
 
     init = tf.initialize_all_variables()
     sess.run(init)
+
+    run_model(hog_net)
