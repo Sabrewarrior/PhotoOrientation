@@ -59,7 +59,7 @@ class LayeredNetwork:
         return activation_func(layer_l)
 
     def output_layer(self, prevl_width, prev_layer, y_width, snapshot, sess):
-        if weights and sess:
+        if snapshot and sess:
             wl = snapshot["wOutput"]
             bl = snapshot["bOutput"]
         else:
