@@ -99,10 +99,11 @@ if __name__ == "__main__":
     batch_size = 1000
 
     data_folder = "/home/ujash/nvme/data2"
+    snapshot_filename = "snapshot1000H25.pkl"
     if os.path.exists(data_folder):
-        M = pickle.load(open(os.path.join(data_folder,"snapshotHOG458.pkl"),'rb'))
+        M = pickle.load(open(os.path.join(data_folder,snapshot_filename),'rb'))
     else:
-        M = pickle.load(open("snapshot1000H25.pkl",'rb'))
+        M = pickle.load(open("snapshotHOG458.pkl",'rb'))
 
     keys = sorted(M.keys())
     weights = {}
