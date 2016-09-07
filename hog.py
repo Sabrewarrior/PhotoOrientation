@@ -25,13 +25,14 @@ class LayeredNetwork:
         hid_layer_num = 0
         for layer_width, activation_func in hid_layers:
             with tf.name_scope("Layer" + str(hid_layer_num)) as scope:
-                self.layer(prevl_width, prev_layer, layer_width, hid_layer_num, activation_func)
+                self.tensors["layer" + str(hid_layer_num)] = self.layer(prevl_width, prev_layer, layer_width,
+                                                                        hid_layer_num, activation_func, weights, sess)
             prevl_width = layer_width
             prev_layer = "layer" + str(hid_layer_num)
             hid_layer_num+=1
 
         with tf.name_scope("OutputLayer") as scope:
-            self.outputs = self.output_layer(prevl_width, prev_layer, y_width)
+            self.outputs = self.output_layer(prevl_width, prev_layer, y_width, weights, sess)
 
         with tf.name_scope("Training") as scope:
             self.labels = tf.placeholder(tf.int32, shape=(batch_size), name="Labels")
@@ -42,25 +43,34 @@ class LayeredNetwork:
             self.testy = tf.placeholder(tf.int32, [None, ], name="Test_y")
             self.acc = self.accuracy()
 
-        if weights is not None and sess is not None:
-            self.load_weights(weights, sess)
+    def layer(self, prevl_width, prev_layer, layer_width, layer_num, activation_func, weights, sess):
+        if weights and sess:
+            wl = weights["w" + str(layer_num)]
+            bl = weights["b" + str(layer_num)]
+        else:
+            wl = tf.random_normal([prevl_width, layer_width], dtype=tf.float32, stddev=1e-1)
+            bl = tf.random_normal([layer_width], dtype=tf.float32, stddev=1e-1)
 
-    def layer(self, prevl_width, prev_layer, layer_width, layer_num, activation_func):
-        self.parameters["w" + str(layer_num)] = tf.Variable(tf.random_normal([prevl_width, layer_width],
-                                                                             dtype=tf.float32, stddev=1e-1))
-        self.parameters["b" + str(layer_num)] = tf.Variable(tf.random_normal([layer_width],
-                                                                             dtype=tf.float32, stddev=1e-1))
+        self.parameters["w" + str(layer_num)] = tf.Variable(wl)
+        self.parameters["b" + str(layer_num)] = tf.Variable(bl)
         layer_l = tf.add(tf.matmul(self.tensors[prev_layer], self.parameters["w" + str(layer_num)]),
                          self.parameters["b" + str(layer_num)])
         #layer1 = tf.nn.tanh(layer1l)
-        self.tensors["layer" + str(layer_num)] = activation_func(layer_l)
+        return activation_func(layer_l)
 
-    def output_layer(self, prevl_width, prev_layer, y_width):
-        self.parameters["wOutput"] = tf.Variable(tf.random_normal([prevl_width, y_width],
-                                                                  dtype=tf.float32, stddev=1e-1))
-        self.parameters["bOutput"] = tf.Variable(tf.random_normal([y_width], dtype=tf.float32, stddev=1e-1))
+    def output_layer(self, prevl_width, prev_layer, y_width, weights, sess):
+        if weights and sess:
+            wl = weights["wOutput"]
+            bl = weights["bOutput"]
+        else:
+            wl = tf.random_normal([prevl_width, y_width], dtype=tf.float32, stddev=1e-1)
+            bl = tf.random_normal([y_width], dtype=tf.float32, stddev=1e-1)
+
+        self.parameters["wOutput"] = tf.Variable(wl)
+        self.parameters["bOutput"] = tf.Variable(bl)
+
         return tf.add(tf.matmul(self.tensors[prev_layer], self.parameters["wOutput"]),
-                                                   self.parameters["bOutput"], name="Outputs")
+                      self.parameters["bOutput"], name="Outputs")
 
     def training(self, y_):
         entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(self.outputs, tf.to_int64(y_))
@@ -73,12 +83,6 @@ class LayeredNetwork:
         probs = tf.nn.softmax(self.outputs)
         correct_prediction = tf.equal(tf.argmax(probs, 1), tf.to_int64(self.tensors["testy"]))
         return tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-
-    def load_weights(self, weights, sess):
-        keys = sorted(weights.keys())
-        for i, k in enumerate(keys):
-            print(i, k, np.shape(weights[k]))
-            sess.run(self.parameters[k].assign(weights[k]))
 
 #if __name__ == "__main__":
 #    hog1layer(1000, .00001, datafolder, feature="hog2", snapshot=M)
