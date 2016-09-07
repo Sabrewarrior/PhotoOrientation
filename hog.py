@@ -10,7 +10,7 @@ random.seed(t)
 
 
 class LayeredNetwork:
-    def __init__(self, batch_size, x_width, y_width, hid_layers, learning_rate, global_step=None, weights=None, sess=None):
+    def __init__(self, batch_size, x_width, y_width, hid_layers, learning_rate, global_step=None, snapshot=None, sess=None):
         self.constants = {"batch_size": batch_size, "learning_rate": learning_rate}
         self.parameters = {}
         self.tensors = {}

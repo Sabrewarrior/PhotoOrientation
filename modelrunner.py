@@ -8,11 +8,12 @@ import tensorflow as tf
 from datahandler import input_pipeline, read_file_format, create_labeled_image_list, convert_binary_to_array
 
 
-def hog1layer(batch_size, weights=None, sess=None, global_step=None):
-    return hog.LayeredNetwork(batch_size, 1764, 4, [(2560,tf.nn.tanh)],0.00001,global_step=global_step,weights = weights,sess=sess)
+def hog1layer(batch_size, snapshot=None, sess=None, global_step=None):
+    return hog.LayeredNetwork(batch_size, 1764, 4, [(2560,tf.nn.tanh)], 0.00001, global_step=global_step,
+                              snapshot = snapshot,sess = sess)
 
 
-def run_model(model):
+def run_model(model, sess):
     timers = {"batching": 0., "converting": 0., "training": 0., "testing":0., "acc":0., "total_tests": 0.}
 
     snapshot = {}
@@ -30,6 +31,7 @@ def run_model(model):
             imgs = convert_binary_to_array(imgs)
             timers["converting"] += (time.time() - now)
 
+            steps += 1
             if steps % 1000 == 0:
                 print(steps)
                 print("Train: " + str(sess.run(model.acc, feed_dict={model.inputs: imgs, model.testy: labels})))
@@ -37,9 +39,9 @@ def run_model(model):
             now = time.time()
             sess.run(model.train_step, feed_dict={model.inputs: imgs, model.labels: labels})
             timers["training"] += (time.time() - now)
-            steps += 1
 
-            print(sess.run(model.global_step))
+
+            #print(sess.run(model.global_step))
             if steps % 1000 == 0:
                 acc = 0.
                 total_test = 0
@@ -100,7 +102,7 @@ if __name__ == "__main__":
     if os.path.exists(data_folder):
         M = pickle.load(open(os.path.join(data_folder,"snapshotHOG458.pkl"),'rb'))
     else:
-        M = pickle.load(open("snapshotHOG458.pkl",'rb'))
+        M = pickle.load(open("snapshot1000H25.pkl",'rb'))
 
     keys = sorted(M.keys())
     weights = {}
@@ -111,8 +113,8 @@ if __name__ == "__main__":
     weights["bOutput"] = M["b1"]
 
     global_step = tf.Variable(0, name='global_step', trainable=False)
-    sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))
-    hog_net = hog1layer(batch_size, weights=weights, sess=sess, global_step = global_step)
+    ses = tf.Session(config=tf.ConfigProto(log_device_placement=True))
+    hog_net = hog1layer(batch_size, snapshot=weights, sess=ses, global_step = global_step)
 
     feature="hog2"
     image_batch, label_batch = input_pipeline(data_folder, batch_size, data_set="train", feature=feature)
@@ -120,6 +122,6 @@ if __name__ == "__main__":
     valid_images, valid_labels = input_pipeline(data_folder, 1000, data_set="valid", feature=feature, num_images=12000)
 
     init = tf.initialize_all_variables()
-    sess.run(init)
+    ses.run(init)
 
-    run_model(hog_net)
+    run_model(hog_net, ses)
