@@ -33,7 +33,7 @@ def run_model(model, sess):
 
             steps += 1
             if steps % 1000 == 0:
-                print(steps)
+                print(sess.run(global_step))
                 print("Train: " + str(sess.run(model.acc, feed_dict={model.inputs: imgs, model.testy: labels})))
 
             now = time.time()
@@ -70,7 +70,7 @@ def run_model(model, sess):
                         snapshot[key] = sess.run(model.parameters[key])
 
                     pickle.dump(snapshot,
-                            open(os.path.join(data_folder, "snapshot1000H" + str(steps // 10000) + ".pkl"), "wb"))
+                            open(os.path.join(data_folder, "snapshot1H" + str(steps // 10000) + ".pkl"), "wb"))
                 if (acc/12)>.99:
                     break
                 # snapshot = {}
@@ -102,6 +102,7 @@ if __name__ == "__main__":
     snapshot_filename = "snapshot1000H25.pkl"
     if os.path.exists(data_folder):
         M = pickle.load(open(os.path.join(data_folder,snapshot_filename),'rb'))
+        print("Snapshot Loaded")
     else:
         M = pickle.load(open("snapshotHOG458.pkl",'rb'))
 
