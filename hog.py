@@ -26,13 +26,13 @@ class LayeredNetwork:
         for layer_width, activation_func in hid_layers:
             with tf.name_scope("Layer" + str(hid_layer_num)) as scope:
                 self.tensors["layer" + str(hid_layer_num)] = self.layer(prevl_width, prev_layer, layer_width,
-                                                                        hid_layer_num, activation_func, weights, sess)
+                                                                        hid_layer_num, activation_func, snapshot, sess)
             prevl_width = layer_width
             prev_layer = "layer" + str(hid_layer_num)
             hid_layer_num+=1
 
         with tf.name_scope("OutputLayer") as scope:
-            self.outputs = self.output_layer(prevl_width, prev_layer, y_width, weights, sess)
+            self.outputs = self.output_layer(prevl_width, prev_layer, y_width, snapshot, sess)
 
         with tf.name_scope("Training") as scope:
             self.labels = tf.placeholder(tf.int32, shape=(batch_size), name="Labels")
@@ -43,10 +43,10 @@ class LayeredNetwork:
             self.testy = tf.placeholder(tf.int32, [None, ], name="Test_y")
             self.acc = self.accuracy()
 
-    def layer(self, prevl_width, prev_layer, layer_width, layer_num, activation_func, weights, sess):
-        if weights and sess:
-            wl = weights["w" + str(layer_num)]
-            bl = weights["b" + str(layer_num)]
+    def layer(self, prevl_width, prev_layer, layer_width, layer_num, activation_func, snapshot, sess):
+        if snapshot and sess:
+            wl = snapshot["w" + str(layer_num)]
+            bl = snapshot["b" + str(layer_num)]
         else:
             wl = tf.random_normal([prevl_width, layer_width], dtype=tf.float32, stddev=1e-1)
             bl = tf.random_normal([layer_width], dtype=tf.float32, stddev=1e-1)
@@ -58,10 +58,10 @@ class LayeredNetwork:
         #layer1 = tf.nn.tanh(layer1l)
         return activation_func(layer_l)
 
-    def output_layer(self, prevl_width, prev_layer, y_width, weights, sess):
+    def output_layer(self, prevl_width, prev_layer, y_width, snapshot, sess):
         if weights and sess:
-            wl = weights["wOutput"]
-            bl = weights["bOutput"]
+            wl = snapshot["wOutput"]
+            bl = snapshot["bOutput"]
         else:
             wl = tf.random_normal([prevl_width, y_width], dtype=tf.float32, stddev=1e-1)
             bl = tf.random_normal([y_width], dtype=tf.float32, stddev=1e-1)
