@@ -40,7 +40,7 @@ def vgg_model1(batch_size, snapshot=None, global_step=None):
         temp_model.outputs = tf.nn.bias_add(tf.matmul(temp_model.tensors['fc7'],
                                                       temp_model.parameters['fc8_W']), temp_model.parameters['fc8_b'])
 
-    temp_model.train_step = temp_model.training(global_step)
+    temp_model.train_step = temp_model.training()
     return temp_model
 
 
