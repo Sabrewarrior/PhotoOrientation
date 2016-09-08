@@ -18,12 +18,12 @@ import tensorflow as tf
 class VGG16:
     def __init__(self, imgs, y_, learning_rate, global_step=None, snapshot=None):
         self.inputs = imgs
-
+        self.labels = y_
         self.parameters = {}
         self.tensors = {}
         self.global_step = global_step
         self.create_conv_layers(snapshot)
-        self.y_ = y_
+
         self.outputs = self.fc_layers("pool5",snapshot)
         self.learning_rate = learning_rate
         self.train_step = self.training()
@@ -38,7 +38,7 @@ class VGG16:
 
     def training(self):
         with tf.name_scope("Training"):
-            entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(self.outputs, tf.to_int64(self.y_))
+            entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(self.outputs, tf.to_int64(self.labels))
             cost = tf.reduce_mean(entropy)
             return tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(cost, global_step=self.global_step)
 
