@@ -29,7 +29,7 @@ def read_file_format(filename_queue, binary=False):
         image = tf.read_file(filename_queue[0])
     else:
         tensor_image = tf.read_file(filename_queue[0])
-        image = tf.image.decode_jpeg(tensor_image)
+        image = tf.image.decode_jpeg(tensor_image, channels = 3)
     return image, label
 
 
