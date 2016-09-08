@@ -1,5 +1,6 @@
+import numpy as np
 import vgg16
-import hog
+import neuralnet
 import alexnet
 import pickle
 import os
@@ -8,9 +9,13 @@ import tensorflow as tf
 from datahandler import input_pipeline, read_file_format, create_labeled_image_list, convert_binary_to_array
 
 
-def hog1layer(batch_size, snapshot=None, sess=None, global_step=None):
-    return hog.LayeredNetwork(batch_size, 1764, 4, [(2560,tf.nn.tanh)], 0.00001, global_step=global_step,
-                              snapshot = snapshot,sess = sess)
+def hog1layer(batch_size, snapshot=None, global_step=None):
+    hid_layers = [(2560, tf.nn.tanh)]
+    learning_rate = 0.00001
+    x_width = 1764
+    y_width = 4
+    return neuralnet.LayeredNetwork(batch_size, x_width, y_width, hid_layers, learning_rate, global_step=global_step,
+                                    snapshot = snapshot)
 
 
 def run_model(model, sess):
@@ -100,6 +105,9 @@ if __name__ == "__main__":
 
     data_folder = "/home/ujash/nvme/data2"
     snapshot_filename = "snapshot1000H25.pkl"
+    tester= np.load("vgg16_weights.npz")
+    print(tester.keys())
+    '''
     if os.path.exists(data_folder):
         M = pickle.load(open(os.path.join(data_folder,snapshot_filename),'rb'))
     else:
@@ -115,7 +123,7 @@ if __name__ == "__main__":
 
     global_step = tf.Variable(0, name='global_step', trainable=False)
     ses = tf.Session(config=tf.ConfigProto(log_device_placement=True))
-    hog_net = hog1layer(batch_size, snapshot=weights, sess=ses, global_step = global_step)
+    hog_net = hog1layer(batch_size, snapshot=weights, global_step = global_step)
 
     feature="hog2"
     image_batch, label_batch = input_pipeline(data_folder, batch_size, data_set="train", feature=feature)
@@ -126,3 +134,4 @@ if __name__ == "__main__":
     ses.run(init)
 
     run_model(hog_net, ses)
+    '''

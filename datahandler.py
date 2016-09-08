@@ -49,10 +49,10 @@ def input_pipeline(directory, batch_size, data_set="train", feature="images", nu
         capacity = min_after_dequeue + 3 * batch_size
         if data_set.count("train") == 1:
             image_batch, label_batch = tf.train.shuffle_batch([image, label], batch_size=batch_size, capacity=capacity,
-                                                          min_after_dequeue=min_after_dequeue, num_threads=1)
+                                                          min_after_dequeue=min_after_dequeue, num_threads=10)
         else:
             image_batch, label_batch = tf.train.batch([image, label], batch_size=batch_size, capacity=capacity,
-                                  num_threads=1)
+                                  num_threads=10)
         return image_batch, label_batch
 
 

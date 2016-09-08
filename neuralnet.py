@@ -1,16 +1,11 @@
-import numpy as np
 import time
 import random
 import tensorflow as tf
 
-t = int(time.time())
-# t = 1454219613
-print("t=", t)
-random.seed(t)
-
 
 class LayeredNetwork:
-    def __init__(self, batch_size, x_width, y_width, hid_layers, learning_rate, global_step=None, snapshot=None, sess=None):
+    def __init__(self, batch_size, x_width, y_width, hid_layers, learning_rate, global_step=None, snapshot=None,
+                 rseed=None):
         self.constants = {"batch_size": batch_size, "learning_rate": learning_rate}
         self.parameters = {}
         self.tensors = {}
@@ -22,17 +17,22 @@ class LayeredNetwork:
         prevl_width = x_width
         prev_layer = "x"
 
+        if not rseed:
+            rseed = time.time()
+        random.seed(rseed)
+
         hid_layer_num = 0
         for layer_width, activation_func in hid_layers:
             with tf.name_scope("Layer" + str(hid_layer_num)) as scope:
-                self.tensors["layer" + str(hid_layer_num)] = self.layer(prevl_width, prev_layer, layer_width,
-                                                                        hid_layer_num, activation_func, snapshot, sess)
+                self.tensors["layer" + str(hid_layer_num)] = self.layer(prevl_width, prev_layer,
+                                                                        layer_width, hid_layer_num,
+                                                                        activation_func, scope, snapshot)
             prevl_width = layer_width
             prev_layer = "layer" + str(hid_layer_num)
             hid_layer_num+=1
 
         with tf.name_scope("OutputLayer") as scope:
-            self.outputs = self.output_layer(prevl_width, prev_layer, y_width, snapshot, sess)
+            self.outputs = self.output_layer(prevl_width, prev_layer, y_width, scope, snapshot)
 
         with tf.name_scope("Training") as scope:
             self.labels = tf.placeholder(tf.int32, shape=(batch_size), name="Labels")
@@ -43,31 +43,31 @@ class LayeredNetwork:
             self.testy = tf.placeholder(tf.int32, [None, ], name="Test_y")
             self.acc = self.accuracy()
 
-    def layer(self, prevl_width, prev_layer, layer_width, layer_num, activation_func, snapshot, sess):
-        if snapshot and sess:
+    def layer(self, prevl_width, prev_layer, layer_width, layer_num, activation_func, scope, snapshot):
+        if snapshot:
             wl = snapshot["w" + str(layer_num)]
             bl = snapshot["b" + str(layer_num)]
         else:
             wl = tf.random_normal([prevl_width, layer_width], dtype=tf.float32, stddev=1e-1)
             bl = tf.random_normal([layer_width], dtype=tf.float32, stddev=1e-1)
 
-        self.parameters["w" + str(layer_num)] = tf.Variable(wl)
-        self.parameters["b" + str(layer_num)] = tf.Variable(bl)
+        self.parameters["w" + str(layer_num)] = tf.Variable(wl, name="weight")
+        self.parameters["b" + str(layer_num)] = tf.Variable(bl, name="bias")
         layer_l = tf.add(tf.matmul(self.tensors[prev_layer], self.parameters["w" + str(layer_num)]),
                          self.parameters["b" + str(layer_num)])
         #layer1 = tf.nn.tanh(layer1l)
-        return activation_func(layer_l)
+        return activation_func(layer_l, name="activation")
 
-    def output_layer(self, prevl_width, prev_layer, y_width, snapshot, sess):
-        if snapshot and sess:
+    def output_layer(self, prevl_width, prev_layer, y_width, scope, snapshot):
+        if snapshot:
             wl = snapshot["wOutput"]
             bl = snapshot["bOutput"]
         else:
             wl = tf.random_normal([prevl_width, y_width], dtype=tf.float32, stddev=1e-1)
             bl = tf.random_normal([y_width], dtype=tf.float32, stddev=1e-1)
 
-        self.parameters["wOutput"] = tf.Variable(wl)
-        self.parameters["bOutput"] = tf.Variable(bl)
+        self.parameters["wOutput"] = tf.Variable(wl, name="weight")
+        self.parameters["bOutput"] = tf.Variable(bl, name="bias")
 
         return tf.add(tf.matmul(self.tensors[prev_layer], self.parameters["wOutput"]),
                       self.parameters["bOutput"], name="Outputs")

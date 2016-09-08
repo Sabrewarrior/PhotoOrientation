@@ -16,36 +16,102 @@ import tensorflow as tf
 
 
 class vgg16:
-    def __init__(self, imgs, y_, learning_rate, global_step=None, weights=None, sess=None):
+    def __init__(self, imgs, y_, learning_rate, global_step=None, snapshot=None):
         self.imgs = imgs
-        self.convlayers()
-        self.fc_layers()
-        self.probs = tf.nn.softmax(self.fc3l)
-        entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(self.fc3l, tf.to_int64(y_))
-        cost = tf.reduce_mean(entropy)
-        self.train_step = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(cost, global_step=global_step)
-        if weights is not None and sess is not None:
-            self.load_weights(weights, sess)
+        self.parameters = {}
+        self.tensors = {}
 
+        self.create_conv_layers(snapshot)
 
-    def convlayers(self):
-        self.parameters = []
+        self.outputs = self.fc_layers("pool5",snapshot)
 
+        with tf.name_scope("Training"):
+            entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(self.outputs, tf.to_int64(y_))
+            cost = tf.reduce_mean(entropy)
+            self.train_step = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(cost, global_step=global_step)
+
+        with tf.name_scope("Accuracy"):
+            self.testy = tf.placeholder(tf.int32, [None, ], name="Test_y")
+            self.probs = tf.nn.softmax(self.outputs)
+            correct_prediction = tf.equal(tf.argmax(self.probs, 1), tf.to_int64(self.testy))
+            self.acc = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+
+    def convolve(self, layer_num, conv_shape_list, conv_stride, pool_ksize, input_name, snapshot):
+        num_convs = len(conv_shape_list)
+        with tf.name_scope("conv" + str(layer_num)) as scope:
+            for conv_num in range(1, num_convs+1):
+                cur_conv = "conv" + str(layer_num) + "_" + str(conv_num)
+                print(cur_conv)
+                if snapshot:
+                    kernel = snapshot[cur_conv + "_W"]
+                    biases = snapshot[cur_conv + "_b"]
+                else:
+                    kernel = tf.truncated_normal(conv_shape_list[conv_num - 1], dtype=tf.float32, stddev=1e-1)
+                    biases = tf.constant(0.0, shape=[conv_shape_list[conv_num -1][-1]], dtype=tf.float32)
+                print(kernel.shape)
+                print(biases.shape)
+                self.parameters.update({cur_conv + "_W": tf.Variable(kernel, name="weights")})
+                self.parameters.update({cur_conv + "_b": tf.Variable(biases, trainable=True, name="weights")})
+
+                conv = tf.nn.conv2d(self.tensors[input_name], self.parameters[cur_conv+"_W"],
+                                    conv_stride, padding='SAME')
+                out = tf.nn.bias_add(conv, self.parameters[cur_conv+"_b"])
+                self.tensors.update({cur_conv: tf.nn.relu(out, name="activation_"+ str(conv_num))})
+                input_name = cur_conv
+
+            return tf.nn.max_pool(self.tensors[input_name], ksize=pool_ksize, strides=pool_ksize, padding='SAME', name='pool')
+
+    def create_conv_layers(self, snapshot):
         # zero-mean input
         with tf.name_scope('preprocess') as scope:
             mean = tf.constant([123.68, 116.779, 103.939], dtype=tf.float32, shape=[1, 1, 1, 3], name='img_mean')
-            images = self.imgs-mean
+            input_name = "pre_proc_images"
+            self.tensors.update({input_name: tf.sub(self.imgs, mean)})
 
+        with tf.name_scope('conv1') as scope:
+            self.tensors.update({"pool1": self.convolve(1, [[3,3,3,64],[3,3,64,64]],
+                                                  [1,1,1,1], [1,2,2,1], input_name, snapshot)})
+            input_name = "pool1"
+
+        with tf.name_scope('conv2') as scope:
+            self.tensors.update({"pool2": self.convolve(2, [[3, 3, 64, 128],[3, 3, 128, 128]],
+                                                  [1,1,1,1], [1,2,2,1], input_name, snapshot)})
+            input_name = "pool2"
+
+        with tf.name_scope('conv3') as scope:
+            self.tensors.update({"pool3": self.convolve(3, [[3, 3, 128, 256],[3, 3, 256, 256],[3, 3, 256, 256]],
+                                                  [1,1,1,1], [1,2,2,1], input_name, snapshot)})
+            input_name = "pool3"
+
+        with tf.name_scope('conv4') as scope:
+            self.tensors.update({"pool4": self.convolve(4, [[3, 3, 256, 512],[3, 3, 512, 512],[3, 3, 512, 512]],
+                                                  [1,1,1,1], [1,2,2,1], input_name, snapshot)})
+            input_name = "pool4"
+
+        with tf.name_scope('conv5') as scope:
+            self.tensors.update({"pool5": self.convolve(5, [[3, 3, 512, 512],[3, 3, 512, 512],[3, 3, 512, 512]],
+                                                  [1,1,1,1], [1,2,2,1], input_name, snapshot)})
+            input_name = "pool5"
+
+        '''
         # conv1_1
         with tf.name_scope('conv1_1') as scope:
-            kernel = tf.Variable(tf.truncated_normal([3, 3, 3, 64], dtype=tf.float32,
-                                                     stddev=1e-1), name='weights')
-            conv = tf.nn.conv2d(images, kernel, [1, 1, 1, 1], padding='SAME')
-            biases = tf.Variable(tf.constant(0.0, shape=[64], dtype=tf.float32),
-                                 trainable=True, name='biases')
-            out = tf.nn.bias_add(conv, biases)
+            cur_conv = "conv" + str(layer_num) + "_" + str(conv_num) + "_"
+            if snapshot:
+                kernel = snapshot[cur_conv + "W"]
+                biases = snapshot[cur_conv + "b"]
+            else:
+                kernel = tf.truncated_normal([3, 3, 3, 64], dtype=tf.float32,
+                                                     stddev=1e-1)
+                biases = tf.constant(0.0, shape=[64], dtype=tf.float32)
+            self.parameters.update({cur_conv + "W": tf.Variable(kernel,trainable=True, name="weights")})
+            self.parameters.update({cur_conv + "b": tf.Variable(biases, trainable=True, name="weights")})
+            conv = tf.nn.conv2d(images, self.parameters[cur_conv+"W"], [1, 1, 1, 1], padding='SAME')
+
+            out = tf.nn.bias_add(conv, self.parameters[cur_conv+"b"])
             self.conv1_1 = tf.nn.relu(out, name=scope)
-            self.parameters += [kernel, biases]
+            self.tensors["conv1_1"] = tf.nn.relu(out, name=scope)
+
 
         # conv1_2
         with tf.name_scope('conv1_2') as scope:
@@ -213,63 +279,72 @@ class vgg16:
                                strides=[1, 2, 2, 1],
                                padding='SAME',
                                name='pool4')
+        '''
 
-    def fc_layers(self):
-        # fc1
-        with tf.name_scope('fc1') as scope:
-            shape = int(np.prod(self.pool5.get_shape()[1:]))
-            fc1w = tf.Variable(tf.truncated_normal([shape, 4096],
-                                                         dtype=tf.float32,
-                                                         stddev=1e-1), name='weights')
-            fc1b = tf.Variable(tf.constant(1.0, shape=[4096], dtype=tf.float32),
-                                 trainable=True, name='biases')
-            pool5_flat = tf.reshape(self.pool5, [-1, shape])
-            fc1l = tf.nn.bias_add(tf.matmul(pool5_flat, fc1w), fc1b)
-            self.fc1 = tf.nn.relu(fc1l)
-            self.parameters += [fc1w, fc1b]
+        return input_name
 
-        # fc2
-        with tf.name_scope('fc2') as scope:
-            fc2w = tf.Variable(tf.truncated_normal([4096, 4096],
-                                                         dtype=tf.float32,
-                                                         stddev=1e-1), name='weights')
-            fc2b = tf.Variable(tf.constant(1.0, shape=[4096], dtype=tf.float32),
-                                 trainable=True, name='biases')
-            fc2l = tf.nn.bias_add(tf.matmul(self.fc1, fc2w), fc2b)
-            self.fc2 = tf.nn.relu(fc2l)
-            self.parameters += [fc2w, fc2b]
+    def fc_layers(self, input_name, snapshot):
+        shape = int(np.prod(self.tensors[input_name].get_shape()[1:]))
+        pool5_flat = tf.reshape(self.tensors[input_name], [-1, shape])
 
-        # fc3
-        with tf.name_scope('fc3') as scope:
-            fc3w = tf.Variable(tf.truncated_normal([4096, 1000],
-                                                         dtype=tf.float32,
-                                                         stddev=1e-1), name='weights')
-            fc3b = tf.Variable(tf.constant(1.0, shape=[1000], dtype=tf.float32),
-                                 trainable=True, name='biases')
-            self.fc3l = tf.nn.bias_add(tf.matmul(self.fc2, fc3w), fc3b)
-            self.parameters += [fc3w, fc3b]
+        with tf.name_scope('fc6') as scope:
+            if snapshot:
+                wl = snapshot['fc6_W']
+                bl = snapshot['fc6_b']
+            else:
+                wl = tf.truncated_normal([shape, 4096], dtype=tf.float32, stddev=1e-1)
+                bl = tf.constant(1.0, shape=[4096], dtype=tf.float32)
+            self.parameters.update({"fc6_W": tf.Variable(wl, name='weights')})
+            self.parameters.update({"fc6_b": tf.Variable(bl, trainable=True, name='biases')})
 
-    def load_weights(self, weight_file_name, sess):
-        if os.path.exists(weight_file_name):
-            print("Path exists")
-        weight_file = open(weight_file_name,'rb')
-        weights = np.load(weight_file)
-        keys = sorted(weights.keys())
-        for i, k in enumerate(keys):
-            print(i, k, np.shape(weights[k]))
-            sess.run(self.parameters[i].assign(weights[k]))
-        weight_file.close()
+            fc6l = tf.nn.bias_add(tf.matmul(pool5_flat, self.parameters['fc6_W']), self.parameters['fc6_b'])
+            self.tensors.update({'fc6': tf.nn.relu(fc6l, name="activation")})
+
+
+        # fc7
+        with tf.name_scope('fc7') as scope:
+            if snapshot:
+                wl = snapshot['fc7_W']
+                bl = snapshot['fc7_b']
+            else:
+                wl = tf.truncated_normal([4096, 4096], dtype=tf.float32, stddev=1e-1)
+                bl = tf.constant(1.0, shape=[4096], dtype=tf.float32)
+            self.parameters.update({"fc7_W": tf.Variable(wl, name='weights')})
+            self.parameters.update({"fc7_b": tf.Variable(bl, trainable=True, name='biases')})
+
+            fc7l = tf.nn.bias_add(tf.matmul(self.tensors['fc6'], self.parameters['fc7_W']), self.parameters['fc7_b'])
+            self.tensors.update({'fc7': tf.nn.relu(fc7l, name="activation")})
+
+
+
+        # fc8
+        with tf.name_scope('fc8') as scope:
+            if snapshot:
+                wl = snapshot['fc8_W']
+                bl = snapshot['fc8_b']
+            else:
+                wl = tf.truncated_normal([4096, 1000], dtype=tf.float32)
+                bl = tf.constant(1.0, shape=[1000], dtype=tf.float32)
+            self.parameters.update({"fc8_W": tf.Variable(wl, name='weights')})
+            self.parameters.update({"fc8_b": tf.Variable(bl, trainable=True, name='biases')})
+
+            return tf.nn.bias_add(tf.matmul(self.tensors['fc7'], self.parameters['fc8_W']), self.parameters['fc8_b'])
+
 
 if __name__ == '__main__':
-    sess = tf.Session()
-    batchSize = 1000
-    globalStep = tf.Variable(0, name='global_step', trainable=False)
-    imgs = tf.placeholder(tf.float32, shape=(None, 224, 224, 3), name="Inputs")
-    y_ = tf.placeholder(tf.int32,shape=(batchSize), name="Outputs")
-    learning_rate = .0001
-    vgg = vgg16(imgs, y_, learning_rate, global_step=globalStep, weights='vgg16_weights.npz', sess=sess)
     test = False
     if test:
+        sess = tf.Session()
+        batchSize = 1000
+        globalStep = tf.Variable(0, name='global_step', trainable=False)
+        imgs = tf.placeholder(tf.float32, shape=(None, 224, 224, 3), name="Inputs")
+        y_ = tf.placeholder(tf.int32,shape=(batchSize), name="Outputs")
+        learning_rate = .0001
+        M = np.load('vgg16_weights.npz')
+        vgg = vgg16(imgs, y_, learning_rate, global_step=globalStep, snapshot=M)
+        init = tf.initialize_all_variables()
+        sess.run(init)
+
         img1 = imread('laska.png', mode='RGB')
         img1 = imresize(img1, (224, 224))
 
