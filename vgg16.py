@@ -22,9 +22,9 @@ class VGG16:
         self.tensors = {}
         self.global_step = global_step
         self.create_conv_layers(snapshot)
-
+        self.y_ = y_
         self.outputs = self.fc_layers("pool5",snapshot)
-
+        self.learning_rate = learning_rate
         self.train_step = self.training()
         self.acc = self.accuracy()
 
@@ -37,9 +37,9 @@ class VGG16:
 
     def training(self):
         with tf.name_scope("Training"):
-            entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(self.outputs, tf.to_int64(y_))
+            entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(self.outputs, tf.to_int64(self.y_))
             cost = tf.reduce_mean(entropy)
-            return tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(cost, global_step=self.global_step)
+            return tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(cost, global_step=self.global_step)
 
 
     def convolve(self, layer_num, conv_shape_list, conv_stride, pool_ksize, input_name, snapshot):
