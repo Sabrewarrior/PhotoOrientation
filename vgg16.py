@@ -17,7 +17,8 @@ import tensorflow as tf
 
 class VGG16:
     def __init__(self, imgs, y_, learning_rate, global_step=None, snapshot=None):
-        self.imgs = imgs
+        self.inputs = imgs
+
         self.parameters = {}
         self.tensors = {}
         self.global_step = global_step
@@ -72,7 +73,7 @@ class VGG16:
         with tf.name_scope('preprocess') as scope:
             mean = tf.constant([123.68, 116.779, 103.939], dtype=tf.float32, shape=[1, 1, 1, 3], name='img_mean')
             input_name = "pre_proc_images"
-            self.tensors.update({input_name: tf.sub(self.imgs, mean)})
+            self.tensors.update({input_name: tf.sub(self.inputs, mean)})
 
         with tf.name_scope('conv1') as scope:
             self.tensors.update({"pool1": self.convolve(1, [[3,3,3,64],[3,3,64,64]],
