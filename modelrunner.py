@@ -77,7 +77,7 @@ def run_model(model, sess, global_step, read_func):
                 acc = 0.
                 total_test = 0
                 now = time.time()
-                for i in range(12):
+                for i in range(120):
                     imgs_test, labels_test = sess.run([test_images, test_labels])
                     imgs_test = read_func(imgs_test)
                     total_test += len(imgs_test)
@@ -85,24 +85,24 @@ def run_model(model, sess, global_step, read_func):
                 timers["testing"] += (time.time() - now)
                 timers["total_tests"] += 1
 
-                print("Test: " + str(acc/12))
+                print("Test: " + str(acc/120))
 
                 if steps%10000 == 0:
                     acc_valid = 0.
-                    for i in range(12):
+                    for i in range(120):
                         imgs_valid, labels_valid = sess.run([valid_images, valid_labels])
                         imgs_valid = read_func(imgs_valid)
                         acc_valid += sess.run(model.acc,
                                               feed_dict={model.inputs: imgs_valid, model.testy: labels_valid})
 
-                    print("Valid: " + str(acc_valid/12))
+                    print("Valid: " + str(acc_valid/120))
 
                     for key in model.parameters.keys():
                         snapshot[key] = sess.run(model.parameters[key])
 
                     pickle.dump(snapshot,
                             open(os.path.join(data_folder, "snapshot1VGG" + str(steps // 10000) + ".pkl"), "wb"))
-                if (acc/12)>.99:
+                if (acc/120)>.99:
                     break
                 # snapshot = {}
             #timers.append(time.time() - now)
@@ -131,7 +131,7 @@ if __name__ == "__main__":
     read_func = dummy_reader
     feature="images"
 
-    batch_size = 1000
+    batch_size = 50
     data_folder = "/home/ujash/nvme/data2"
 
     globalStep = tf.Variable(0, name='global_step', trainable=False)
@@ -160,8 +160,8 @@ if __name__ == "__main__":
         cur_model = vgg_model1(batch_size, snapshot=M, global_step=globalStep)
 
     image_batch, label_batch = input_pipeline(data_folder, batch_size, data_set="train", feature=feature)
-    test_images, test_labels = input_pipeline(data_folder, 1000, data_set="test", feature=feature, num_images=12000)
-    valid_images, valid_labels = input_pipeline(data_folder, 1000, data_set="valid", feature=feature, num_images=12000)
+    test_images, test_labels = input_pipeline(data_folder, 100, data_set="test", feature=feature, num_images=12000)
+    valid_images, valid_labels = input_pipeline(data_folder, 100, data_set="valid", feature=feature, num_images=12000)
     init = tf.initialize_all_variables()
     ses.run(init)
     if cur_model:
