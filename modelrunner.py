@@ -1,15 +1,18 @@
 import numpy as np
 import vgg16
 import neuralnet
-import alexnet
 import pickle
 import os
 import time
 import tensorflow as tf
-from datahandler import input_pipeline, read_file_format, create_labeled_image_list, convert_binary_to_array
+from datahandler import input_pipeline, convert_binary_to_array
 
 
-def hog1layer(batch_size, snapshot=None, global_step=None):
+def dummy_reader(input_data):
+    return input_data
+
+
+def hog_model(batch_size, snapshot=None, global_step=None):
     hid_layers = [(2560, tf.nn.tanh)]
     learning_rate = 0.00001
     x_width = 1764
@@ -18,7 +21,30 @@ def hog1layer(batch_size, snapshot=None, global_step=None):
                                     snapshot = snapshot)
 
 
-def run_model(model, sess):
+def vgg_model1(batch_size, snapshot=None, global_step=None):
+    learning_rate = .00001
+    imgs = tf.placeholder(tf.float32, shape=(None, 224, 224, 3), name="Inputs")
+    y_ = tf.placeholder(tf.int32,shape=(batch_size), name="Outputs")
+    temp_model = vgg16.VGG16(imgs, y_, learning_rate, global_step=globalStep, snapshot=M)
+
+    #Changing last layer only
+    with tf.name_scope('fc8') as scope:
+        if snapshot and snapshot['fc8_b'].shape[0] == 4:
+            wl = snapshot['fc8_W']
+            bl = snapshot['fc8_b']
+        else:
+            wl = tf.truncated_normal([4096, 4], dtype=tf.float32)
+            bl = tf.constant(1.0, shape=[4], dtype=tf.float32)
+        temp_model.parameters["fc8_W"] = tf.Variable(wl, name='weights')
+        temp_model.parameters["fc8_b"] = tf.Variable(bl, trainable=True, name='biases')
+        temp_model.outputs = tf.nn.bias_add(tf.matmul(temp_model.tensors['fc7'],
+                                                      temp_model.parameters['fc8_W']), temp_model.parameters['fc8_b'])
+
+    temp_model.train_step = temp_model.training(global_step)
+    return temp_model
+
+
+def run_model(model, sess, global_step, read_func):
     timers = {"batching": 0., "converting": 0., "training": 0., "testing":0., "acc":0., "total_tests": 0.}
 
     snapshot = {}
@@ -33,7 +59,7 @@ def run_model(model, sess):
             timers["batching"] += (time.time() - now)
 
             now = time.time()
-            imgs = convert_binary_to_array(imgs)
+            imgs = read_func(imgs)
             timers["converting"] += (time.time() - now)
 
             steps += 1
@@ -53,7 +79,7 @@ def run_model(model, sess):
                 now = time.time()
                 for i in range(12):
                     imgs_test, labels_test = sess.run([test_images, test_labels])
-                    imgs_test = convert_binary_to_array(imgs_test)
+                    imgs_test = read_func(imgs_test)
                     total_test += len(imgs_test)
                     acc += sess.run(model.acc, feed_dict={model.inputs: imgs_test, model.testy: labels_test})
                 timers["testing"] += (time.time() - now)
@@ -65,7 +91,7 @@ def run_model(model, sess):
                     acc_valid = 0.
                     for i in range(12):
                         imgs_valid, labels_valid = sess.run([valid_images, valid_labels])
-                        imgs_valid = convert_binary_to_array(imgs_valid)
+                        imgs_valid = read_func(imgs_valid)
                         acc_valid += sess.run(model.acc,
                                               feed_dict={model.inputs: imgs_valid, model.testy: labels_valid})
 
@@ -75,7 +101,7 @@ def run_model(model, sess):
                         snapshot[key] = sess.run(model.parameters[key])
 
                     pickle.dump(snapshot,
-                            open(os.path.join(data_folder, "snapshot1H" + str(steps // 10000) + ".pkl"), "wb"))
+                            open(os.path.join(data_folder, "snapshot1VGG" + str(steps // 10000) + ".pkl"), "wb"))
                 if (acc/12)>.99:
                     break
                 # snapshot = {}
@@ -101,38 +127,42 @@ def run_model(model, sess):
 
 
 if __name__ == "__main__":
+    cur_model=None
+    read_func = dummy_reader
+    feature="images"
+
     batch_size = 1000
-
     data_folder = "/home/ujash/nvme/data2"
-    snapshot_filename = "snapshot1000H25.pkl"
-    tester= np.load("vgg16_weights.npz")
-    print(tester.keys())
-    '''
-    if os.path.exists(data_folder):
-        M = pickle.load(open(os.path.join(data_folder,snapshot_filename),'rb'))
-        print("Snapshot Loaded")
-    else:
-        M = pickle.load(open("snapshotHOG458.pkl",'rb'))
 
-    keys = sorted(M.keys())
-    weights = {}
-    weights["w0"] = M["w0"]
-    weights["b0"] = M["b0"]
-
-    weights["wOutput"] = M["w1"]
-    weights["bOutput"] = M["b1"]
-
-    global_step = tf.Variable(0, name='global_step', trainable=False)
+    globalStep = tf.Variable(0, name='global_step', trainable=False)
     ses = tf.Session(config=tf.ConfigProto(log_device_placement=True))
-    hog_net = hog1layer(batch_size, snapshot=weights, global_step = global_step)
 
-    feature="hog2"
+    hog = False
+    if hog:
+        snapshot_filename = "snapshot1H2.pkl"
+        if os.path.exists(data_folder):
+            M = pickle.load(open(os.path.join(data_folder,snapshot_filename),'rb'))
+            print("Snapshot Loaded")
+        else:
+            M = pickle.load(open("snapshotHOG458.pkl",'rb'))
+
+        cur_model = hog_model(batch_size, snapshot=M, global_step = globalStep)
+
+        feature="hog2"
+        read_func = convert_binary_to_array
+
+
+
+    vgg = True
+    if vgg:
+        M = np.load('vgg16_weights.npz')
+        feature="images"
+        cur_model = vgg_model1(batch_size, snapshot=M, global_step=globalStep)
+
     image_batch, label_batch = input_pipeline(data_folder, batch_size, data_set="train", feature=feature)
     test_images, test_labels = input_pipeline(data_folder, 1000, data_set="test", feature=feature, num_images=12000)
     valid_images, valid_labels = input_pipeline(data_folder, 1000, data_set="valid", feature=feature, num_images=12000)
-
     init = tf.initialize_all_variables()
     ses.run(init)
-
-    run_model(hog_net, ses)
-    '''
+    if cur_model:
+        run_model(cur_model, ses, globalStep,read_func)

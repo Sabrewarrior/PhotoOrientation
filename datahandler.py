@@ -23,13 +23,21 @@ def read_my_file_format(filename_queue):
 '''
 
 
-def read_file_format(filename_queue):
-    image = tf.read_file(filename_queue[0])
+def read_file_format(filename_queue, binary=False):
     label = tf.cast(filename_queue[1], tf.int32)
+    if binary:
+        image = tf.read_file(filename_queue[0])
+    else:
+        tensor_image = tf.read_file(filename_queue[0])
+        image = tf.image.decode_jpeg(tensor_image)
     return image, label
 
 
 def input_pipeline(directory, batch_size, data_set="train", feature="images", num_epochs=None, num_images=None):
+    if feature.count("images") > 0:
+        binary = False
+    else:
+        binary = True
     with tf.name_scope('InputPipeline'):
         # Reads paths of images together with their labels
         image_list, label_list = create_labeled_image_list(directory, data_set=data_set, feature=feature,
@@ -37,7 +45,7 @@ def input_pipeline(directory, batch_size, data_set="train", feature="images", nu
 
         # Makes an input queue
         input_queue = tf.train.slice_input_producer([image_list, label_list],num_epochs=num_epochs)
-        image, label = read_file_format(input_queue)
+        image, label = read_file_format(input_queue, binary=binary)
 
         # min_after_dequeue defines how big a buffer we will randomly sample
         #   from -- bigger means better shuffling but slower start up and more
@@ -61,6 +69,14 @@ def convert_binary_to_array(image_binary_list):
     #print(image_binary_list)
     for image_binary in image_binary_list:
         images.append(pickle.loads(image_binary))
+    return images
+
+
+def convert_to_array(image_list):
+    images = []
+    #print(image_binary_list)
+    for image in image_list:
+        images.append(imread(image))
     return images
 
 

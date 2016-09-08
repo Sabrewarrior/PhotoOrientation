@@ -15,26 +15,32 @@ import os
 import tensorflow as tf
 
 
-class vgg16:
+class VGG16:
     def __init__(self, imgs, y_, learning_rate, global_step=None, snapshot=None):
         self.imgs = imgs
         self.parameters = {}
         self.tensors = {}
-
+        self.global_step = global_step
         self.create_conv_layers(snapshot)
 
         self.outputs = self.fc_layers("pool5",snapshot)
 
-        with tf.name_scope("Training"):
-            entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(self.outputs, tf.to_int64(y_))
-            cost = tf.reduce_mean(entropy)
-            self.train_step = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(cost, global_step=global_step)
+        self.train_step = self.training()
+        self.acc = self.accuracy()
 
+    def accuracy(self):
         with tf.name_scope("Accuracy"):
             self.testy = tf.placeholder(tf.int32, [None, ], name="Test_y")
             self.probs = tf.nn.softmax(self.outputs)
             correct_prediction = tf.equal(tf.argmax(self.probs, 1), tf.to_int64(self.testy))
-            self.acc = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+            return tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+
+    def training(self):
+        with tf.name_scope("Training"):
+            entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(self.outputs, tf.to_int64(y_))
+            cost = tf.reduce_mean(entropy)
+            return tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(cost, global_step=self.global_step)
+
 
     def convolve(self, layer_num, conv_shape_list, conv_stride, pool_ksize, input_name, snapshot):
         num_convs = len(conv_shape_list)
@@ -341,7 +347,7 @@ if __name__ == '__main__':
         y_ = tf.placeholder(tf.int32,shape=(batchSize), name="Outputs")
         learning_rate = .0001
         M = np.load('vgg16_weights.npz')
-        vgg = vgg16(imgs, y_, learning_rate, global_step=globalStep, snapshot=M)
+        vgg = VGG16(imgs, y_, learning_rate, global_step=globalStep, snapshot=M)
         init = tf.initialize_all_variables()
         sess.run(init)
 
