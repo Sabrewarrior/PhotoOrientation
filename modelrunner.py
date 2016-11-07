@@ -25,33 +25,19 @@ def vgg_model1(batch_size, snapshot=None, global_step=None):
     learning_rate = .00001
     imgs = tf.placeholder(tf.float32, shape=(None, 224, 224, 3), name="Inputs")
     y_ = tf.placeholder(tf.int32,shape=(batch_size), name="Outputs")
-    temp_model = vgg16.VGG16(imgs, y_, learning_rate, global_step=globalStep, snapshot=M)
-
-    #Changing last layer only
-    with tf.name_scope('fc8') as scope:
-        if snapshot and snapshot['fc8_b'].shape[0] == 4:
-            wl = snapshot['fc8_W']
-            bl = snapshot['fc8_b']
-        else:
-            wl = tf.truncated_normal([4096, 4], dtype=tf.float32)
-            bl = tf.constant(1.0, shape=[4], dtype=tf.float32)
-        temp_model.parameters["fc8_W"] = tf.Variable(wl, name='weights')
-        temp_model.parameters["fc8_b"] = tf.Variable(bl, trainable=True, name='biases')
-        temp_model.outputs = tf.nn.bias_add(tf.matmul(temp_model.tensors['fc7'],
-                                                      temp_model.parameters['fc8_W']), temp_model.parameters['fc8_b'])
-
-    temp_model.train_step = temp_model.training()
-    return temp_model
+    return vgg16.VGG16(imgs,y_,learning_rate,max_pool_num=5,global_step=global_step,snapshot=snapshot)
 
 
 def run_model(model, sess, global_step, read_func):
     timers = {"batching": 0., "converting": 0., "training": 0., "testing":0., "acc":0., "total_tests": 0.}
-
+    test_steps = 1000
+    valid_steps = 10000
     snapshot = {}
     coord = tf.train.Coordinator()
     threads = tf.train.start_queue_runners(sess=sess, coord=coord)
     steps = 0
     try:
+        print("Starting training")
         while not coord.should_stop():
 
             now = time.time()
@@ -63,49 +49,42 @@ def run_model(model, sess, global_step, read_func):
             timers["converting"] += (time.time() - now)
 
             steps += 1
-            if steps % 1000 == 0:
-                print(sess.run(global_step))
-                print("Train: " + str(sess.run(model.acc, feed_dict={model.inputs: imgs, model.testy: labels})))
+            # if steps % test_steps == 0:
+            #     print(sess.run(global_step))
+            #     print("Train: " + str(sess.run(model.acc, feed_dict={model.inputs: imgs, model.testy: labels})))
 
             now = time.time()
             sess.run(model.train_step, feed_dict={model.inputs: imgs, model.labels: labels})
             timers["training"] += (time.time() - now)
 
-
-            #print(sess.run(model.global_step))
-            if steps % 1000 == 0:
-                acc = 0.
-                total_test = 0
-                now = time.time()
-                for i in range(120):
-                    imgs_test, labels_test = sess.run([test_images, test_labels])
-                    imgs_test = read_func(imgs_test)
-                    total_test += len(imgs_test)
-                    acc += sess.run(model.acc, feed_dict={model.inputs: imgs_test, model.testy: labels_test})
-                timers["testing"] += (time.time() - now)
+            # print(sess.run(model.global_step))
+            if steps % test_steps == 0:
+                print(steps)
+                print("Calculating test accuracy")
+                test_acc, test_time = run_acc_batch(num_test_images, test_images, test_labels, model, sess,
+                                                    max_parallel_calcs = max_parallel_acc_calcs)
+                timers["testing"] += test_time
                 timers["total_tests"] += 1
+                print("Test: " + str(test_acc))
 
-                print("Test: " + str(acc/120))
+                if steps%valid_steps == 0:
+                    print("Calculating validation accuracy")
+                    acc_valid, valid_time = run_acc_batch(num_valid_images, valid_images, valid_labels, model, sess,
+                                                          max_parallel_calcs = max_parallel_acc_calcs)
 
-                if steps%10000 == 0:
-                    acc_valid = 0.
-                    for i in range(120):
-                        imgs_valid, labels_valid = sess.run([valid_images, valid_labels])
-                        imgs_valid = read_func(imgs_valid)
-                        acc_valid += sess.run(model.acc,
-                                              feed_dict={model.inputs: imgs_valid, model.testy: labels_valid})
-
-                    print("Valid: " + str(acc_valid/120))
+                    print("Valid: " + str(acc_valid))
 
                     for key in model.parameters.keys():
                         snapshot[key] = sess.run(model.parameters[key])
+                    print(timers)
+                    pickle.dump(snapshot, open(os.path.join(data_folder, snapshot_folder, str(steps // valid_steps)
+                                                            + ".pkl"), "wb"))
 
-                    pickle.dump(snapshot,
-                            open(os.path.join(data_folder, "snapshot1VGG" + str(steps // 10000) + ".pkl"), "wb"))
-                if (acc/120)>.99:
+                if test_acc >.99:
                     break
+                print("Training")
                 # snapshot = {}
-            #timers.append(time.time() - now)
+            # timers.append(time.time() - now)
     except tf.errors.OutOfRangeError:
         print('Done training -- epoch limit reached')
     finally:
@@ -117,7 +96,7 @@ def run_model(model, sess, global_step, read_func):
         snapshot[key] = sess.run(model.parameters[key])
 
     pickle.dump(snapshot,
-                open(os.path.join(data_folder, "snapshotHOGFinal.pkl"), "wb"))
+                open(os.path.join(data_folder, snapshot_folder, "Final.pkl"), "wb"))
 
     sess.close()
     for timer in timers.keys():
@@ -126,43 +105,68 @@ def run_model(model, sess, global_step, read_func):
     print("acc avg: " + str(timers["acc"]/timers["total_tests"]))
 
 
+def run_acc_batch(num_images, images, labels, model, sess, max_parallel_calcs = None):
+    acc = 0.
+    total_test = 0
+    now = time.time()
+    repeat_num = 1
+    if max_parallel_calcs:
+        repeat_num = batch_size//max_parallel_calcs
+    for i in range(repeat_num):
+        raw_imgs_list, labels_list = sess.run([images, labels])
+        imgs_list = read_func(raw_imgs_list)
+        total_test += len(imgs_list)
+        acc += sess.run(model.acc, feed_dict={model.inputs: imgs_list, model.testy: labels_list, model.keep_probs: 1})
+    timer = (time.time() - now)
+
+    return acc/repeat_num, timer
+
+
 if __name__ == "__main__":
     cur_model=None
     read_func = dummy_reader
     feature="images"
 
-    batch_size = 50
-    data_folder = "/home/ujash/nvme/data2"
-
+    data_folder = os.path.join("C:", os.sep, "PhotoOrientation", "data2")
+    print(data_folder)
     globalStep = tf.Variable(0, name='global_step', trainable=False)
     ses = tf.Session(config=tf.ConfigProto(log_device_placement=True))
 
-    hog = False
-    if hog:
-        snapshot_filename = "snapshot1H2.pkl"
+    vgg = True
+    if vgg:
+        batch_size = 15
+        max_parallel_acc_calcs = 15
+        snapshot_folder = "snapshotVGG1"
+        M = np.load('vgg16_weights.npz')
+        feature = "images"
+        cur_model = vgg_model1(batch_size, snapshot=M, global_step=globalStep)
+    else:
+        batch_size = 100
+        max_parallel_acc_calcs = 1000
+        snapshot_folder = "snapshotHOG"
+        snapshot_file = "457.pkl"
         if os.path.exists(data_folder):
-            M = pickle.load(open(os.path.join(data_folder,snapshot_filename),'rb'))
+            M = pickle.load(open(os.path.join(data_folder, snapshot_folder, snapshot_file), 'rb'))
             print("Snapshot Loaded")
         else:
-            M = pickle.load(open("snapshotHOG458.pkl",'rb'))
+            M = pickle.load(open("snapshotHOG\\457.pkl", 'rb'))
 
         cur_model = hog_model(batch_size, snapshot=M, global_step = globalStep)
 
         feature="hog2"
         read_func = convert_binary_to_array
 
+    if not os.path.exists(os.path.join(data_folder, snapshot_folder)):
+        os.mkdir(os.path.join(data_folder, snapshot_folder))
 
-
-    vgg = True
-    if vgg:
-        M = np.load('vgg16_weights.npz')
-        feature="images"
-        cur_model = vgg_model1(batch_size, snapshot=M, global_step=globalStep)
-
+    num_test_images = 12000
+    num_valid_images = 12000
     image_batch, label_batch = input_pipeline(data_folder, batch_size, data_set="train", feature=feature)
-    test_images, test_labels = input_pipeline(data_folder, 100, data_set="test", feature=feature, num_images=12000)
-    valid_images, valid_labels = input_pipeline(data_folder, 100, data_set="valid", feature=feature, num_images=12000)
+    test_images, test_labels = input_pipeline(data_folder, max_parallel_acc_calcs, data_set="test", feature=feature,
+                                              num_images=num_test_images)
+    valid_images, valid_labels = input_pipeline(data_folder, max_parallel_acc_calcs, data_set="valid", feature=feature,
+                                                num_images=num_valid_images)
     init = tf.initialize_all_variables()
     ses.run(init)
     if cur_model:
-        run_model(cur_model, ses, globalStep,read_func)
+        run_model(cur_model, ses, globalStep, read_func)

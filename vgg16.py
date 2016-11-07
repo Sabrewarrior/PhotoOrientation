@@ -16,15 +16,16 @@ import tensorflow as tf
 
 
 class VGG16:
-    def __init__(self, imgs, y_, learning_rate, global_step=None, snapshot=None):
+    def __init__(self, imgs, y_, learning_rate, max_pool_num=5, global_step=None, snapshot=None):
         self.inputs = imgs
         self.labels = y_
         self.parameters = {}
         self.tensors = {}
         self.global_step = global_step
-        self.create_conv_layers(snapshot)
+        self.keep_probs =  tf.Variable(0.75, name='keep_probs', trainable=False, dtype=tf.float32)
+        last_pool_name = self.create_conv_layers(snapshot, max_pool_num)
 
-        self.outputs = self.fc_layers("pool5",snapshot)
+        self.outputs = self.fc_layers(last_pool_name,snapshot)
         self.learning_rate = learning_rate
         self.train_step = self.training()
         self.acc = self.accuracy()
@@ -68,7 +69,7 @@ class VGG16:
 
             return tf.nn.max_pool(self.tensors[input_name], ksize=pool_ksize, strides=pool_ksize, padding='SAME', name='pool')
 
-    def create_conv_layers(self, snapshot):
+    def create_conv_layers(self, snapshot, pool_num=5):
         # zero-mean input
         with tf.name_scope('preprocess') as scope:
             mean = tf.constant([123.68, 116.779, 103.939], dtype=tf.float32, shape=[1, 1, 1, 3], name='img_mean')
@@ -89,16 +90,17 @@ class VGG16:
             self.tensors.update({"pool3": self.convolve(3, [[3, 3, 128, 256],[3, 3, 256, 256],[3, 3, 256, 256]],
                                                   [1,1,1,1], [1,2,2,1], input_name, snapshot)})
             input_name = "pool3"
-
-        with tf.name_scope('conv4') as scope:
-            self.tensors.update({"pool4": self.convolve(4, [[3, 3, 256, 512],[3, 3, 512, 512],[3, 3, 512, 512]],
+        if pool_num > 3:
+            with tf.name_scope('conv4') as scope:
+                self.tensors.update({"pool4": self.convolve(4, [[3, 3, 256, 512],[3, 3, 512, 512],[3, 3, 512, 512]],
                                                   [1,1,1,1], [1,2,2,1], input_name, snapshot)})
-            input_name = "pool4"
+                input_name = "pool4"
 
-        with tf.name_scope('conv5') as scope:
-            self.tensors.update({"pool5": self.convolve(5, [[3, 3, 512, 512],[3, 3, 512, 512],[3, 3, 512, 512]],
+        if pool_num > 4:
+            with tf.name_scope('conv5') as scope:
+                self.tensors.update({"pool5": self.convolve(5, [[3, 3, 512, 512],[3, 3, 512, 512],[3, 3, 512, 512]],
                                                   [1,1,1,1], [1,2,2,1], input_name, snapshot)})
-            input_name = "pool5"
+                input_name = "pool5"
 
         '''
         # conv1_1
@@ -293,53 +295,52 @@ class VGG16:
     def fc_layers(self, input_name, snapshot):
         shape = int(np.prod(self.tensors[input_name].get_shape()[1:]))
         pool5_flat = tf.reshape(self.tensors[input_name], [-1, shape])
-
+        print(shape)
         with tf.name_scope('fc6') as scope:
-            if snapshot:
+            if snapshot and shape == snapshot['fc6_W'].shape:
                 wl = snapshot['fc6_W']
                 bl = snapshot['fc6_b']
             else:
-                wl = tf.truncated_normal([shape, 4096], dtype=tf.float32, stddev=1e-1)
-                bl = tf.constant(1.0, shape=[4096], dtype=tf.float32)
-            self.parameters.update({"fc6_W": tf.Variable(wl, name='weights')})
+                wl = tf.truncated_normal([shape, 512], dtype=tf.float32, stddev=1e-1)
+                bl = tf.constant(1.0, shape=[512], dtype=tf.float32)
+            self.parameters.update({"fc6_W": tf.Variable(wl, trainable=True, name='weights')})
             self.parameters.update({"fc6_b": tf.Variable(bl, trainable=True, name='biases')})
-
             fc6l = tf.nn.bias_add(tf.matmul(pool5_flat, self.parameters['fc6_W']), self.parameters['fc6_b'])
-            self.tensors.update({'fc6': tf.nn.relu(fc6l, name="activation")})
+            self.tensors.update({'fc6': tf.nn.dropout(tf.nn.relu(fc6l, name="activation"),self.keep_probs)})
 
 
         # fc7
         with tf.name_scope('fc7') as scope:
-            if snapshot:
+            if snapshot and shape == snapshot['fc6_W'].shape:
                 wl = snapshot['fc7_W']
                 bl = snapshot['fc7_b']
             else:
-                wl = tf.truncated_normal([4096, 4096], dtype=tf.float32, stddev=1e-1)
-                bl = tf.constant(1.0, shape=[4096], dtype=tf.float32)
-            self.parameters.update({"fc7_W": tf.Variable(wl, name='weights')})
+                wl = tf.truncated_normal([512, 512], dtype=tf.float32, stddev=1e-1)
+                bl = tf.constant(1.0, shape=[512], dtype=tf.float32)
+            self.parameters.update({"fc7_W": tf.Variable(wl, trainable=True, name='weights')})
             self.parameters.update({"fc7_b": tf.Variable(bl, trainable=True, name='biases')})
 
             fc7l = tf.nn.bias_add(tf.matmul(self.tensors['fc6'], self.parameters['fc7_W']), self.parameters['fc7_b'])
-            self.tensors.update({'fc7': tf.nn.relu(fc7l, name="activation")})
+            self.tensors.update({'fc7': tf.nn.dropout(tf.nn.relu(fc7l, name="activation"),self.keep_probs)})
 
 
 
         # fc8
         with tf.name_scope('fc8') as scope:
-            if snapshot:
+            if snapshot and shape == snapshot['fc6_W'].shape:
                 wl = snapshot['fc8_W']
                 bl = snapshot['fc8_b']
             else:
-                wl = tf.truncated_normal([4096, 1000], dtype=tf.float32)
-                bl = tf.constant(1.0, shape=[1000], dtype=tf.float32)
-            self.parameters.update({"fc8_W": tf.Variable(wl, name='weights')})
+                wl = tf.truncated_normal([512, 4], dtype=tf.float32, stddev=1e-1)
+                bl = tf.constant(0.1, shape=[4], dtype=tf.float32)
+            self.parameters.update({"fc8_W": tf.Variable(wl, trainable=True, name='weights')})
             self.parameters.update({"fc8_b": tf.Variable(bl, trainable=True, name='biases')})
 
             return tf.nn.bias_add(tf.matmul(self.tensors['fc7'], self.parameters['fc8_W']), self.parameters['fc8_b'])
 
 
 if __name__ == '__main__':
-    test = False
+    test = True
     if test:
         sess = tf.Session()
         batchSize = 1000
@@ -348,16 +349,13 @@ if __name__ == '__main__':
         y_ = tf.placeholder(tf.int32,shape=(batchSize), name="Outputs")
         learning_rate = .0001
         M = np.load('vgg16_weights.npz')
-        vgg = VGG16(imgs, y_, learning_rate, global_step=globalStep, snapshot=M)
+        vgg = VGG16(imgs, y_, learning_rate, max_pool_num=4, global_step=globalStep, snapshot=M)
         init = tf.initialize_all_variables()
         sess.run(init)
 
         img1 = imread('laska.png', mode='RGB')
         img1 = imresize(img1, (224, 224))
 
-        prob = sess.run(vgg.probs, feed_dict={vgg.imgs: [img1]})[0]
-        preds = (np.argsort(prob)[::-1])[0:5]
-        for p in preds:
-            print(class_names[p], prob[p])
-
+        prob = sess.run(vgg.probs, feed_dict={vgg.inputs: [img1]})[0]
+        print(prob)
 
