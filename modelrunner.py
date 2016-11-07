@@ -136,7 +136,7 @@ if __name__ == "__main__":
     if vgg:
         batch_size = 15
         max_parallel_acc_calcs = 15
-        snapshot_folder = "snapshotVGG1"
+        snapshot_folder = "snapshotVGG"
         M = np.load('vgg16_weights.npz')
         feature = "images"
         cur_model = vgg_model1(batch_size, snapshot=M, global_step=globalStep)
