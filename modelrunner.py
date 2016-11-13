@@ -58,6 +58,7 @@ def run_model(model, sess, global_step, read_func):
             timers["training"] += (time.time() - now)
 
             # print(sess.run(model.global_step))
+
             if steps % test_steps == 0:
                 print(steps)
                 print("Calculating test accuracy")
@@ -110,15 +111,24 @@ def run_acc_batch(num_images, images, labels, model, sess, max_parallel_calcs = 
     total_test = 0
     now = time.time()
     repeat_num = 1
+    coord = tf.train.Coordinator()
+    threads = tf.train.start_queue_runners(sess=sess, coord=coord)
     if max_parallel_calcs:
-        repeat_num = batch_size//max_parallel_calcs
-    for i in range(repeat_num):
-        raw_imgs_list, labels_list = sess.run([images, labels])
-        imgs_list = read_func(raw_imgs_list)
-        total_test += len(imgs_list)
-        acc += sess.run(model.acc, feed_dict={model.inputs: imgs_list, model.testy: labels_list, model.keep_probs: 1})
+        repeat_num = num_images // max_parallel_calcs
+    print(repeat_num)
+    try:
+        while not coord.should_stop():
+            for i in range(repeat_num):
+                raw_imgs_list, labels_list = sess.run([images, labels])
+                imgs_list = read_func(raw_imgs_list)
+                total_test += len(imgs_list)
+                acc += sess.run(model.acc, feed_dict={model.inputs: imgs_list, model.testy: labels_list, model.keep_probs: 1})
+            break
+    finally:
+        coord.request_stop()
+    coord.join(threads)
     timer = (time.time() - now)
-
+    print(acc)
     return acc/repeat_num, timer
 
 
