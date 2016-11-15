@@ -106,7 +106,7 @@ def create_labeled_image_list(directory, data_set="train", feature="images", num
                             break
                     image_list.append(os.path.join(root_inner,filename))
                     label_list.append(label)
-                    limit+=1
+                    limit += 1
         break
 
     print(str(len(image_list)) + " images loaded")

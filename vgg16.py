@@ -22,7 +22,7 @@ class VGG16:
         self.parameters = {}
         self.tensors = {}
         self.global_step = global_step
-        self.keep_probs =  tf.Variable(0.75, name='keep_probs', trainable=False, dtype=tf.float32)
+        self.keep_probs = tf.Variable(0.75, name='keep_probs', trainable=False, dtype=tf.float32)
         last_pool_name = self.create_conv_layers(snapshot, max_pool_num)
 
         self.outputs = self.fc_layers(last_pool_name,snapshot)
@@ -42,7 +42,6 @@ class VGG16:
             entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(self.outputs, tf.to_int64(self.labels))
             cost = tf.reduce_mean(entropy)
             return tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(cost, global_step=self.global_step)
-
 
     def convolve(self, layer_num, conv_shape_list, conv_stride, pool_ksize, input_name, snapshot):
         num_convs = len(conv_shape_list)
@@ -77,29 +76,29 @@ class VGG16:
             self.tensors.update({input_name: tf.sub(self.inputs, mean)})
 
         with tf.name_scope('conv1') as scope:
-            self.tensors.update({"pool1": self.convolve(1, [[3,3,3,64],[3,3,64,64]],
-                                                  [1,1,1,1], [1,2,2,1], input_name, snapshot)})
+            self.tensors.update({"pool1": self.convolve(1, [[3, 3, 3, 64], [3, 3, 64, 64]],
+                                                        [1, 1, 1, 1], [1, 2, 2, 1], input_name, snapshot)})
             input_name = "pool1"
 
         with tf.name_scope('conv2') as scope:
             self.tensors.update({"pool2": self.convolve(2, [[3, 3, 64, 128],[3, 3, 128, 128]],
-                                                  [1,1,1,1], [1,2,2,1], input_name, snapshot)})
+                                                        [1, 1, 1, 1], [1, 2, 2, 1], input_name, snapshot)})
             input_name = "pool2"
 
         with tf.name_scope('conv3') as scope:
             self.tensors.update({"pool3": self.convolve(3, [[3, 3, 128, 256],[3, 3, 256, 256],[3, 3, 256, 256]],
-                                                  [1,1,1,1], [1,2,2,1], input_name, snapshot)})
+                                                        [1, 1, 1, 1], [1, 2, 2, 1], input_name, snapshot)})
             input_name = "pool3"
         if pool_num > 3:
             with tf.name_scope('conv4') as scope:
                 self.tensors.update({"pool4": self.convolve(4, [[3, 3, 256, 512],[3, 3, 512, 512],[3, 3, 512, 512]],
-                                                  [1,1,1,1], [1,2,2,1], input_name, snapshot)})
+                                                            [1, 1, 1, 1], [1, 2, 2, 1], input_name, snapshot)})
                 input_name = "pool4"
 
         if pool_num > 4:
             with tf.name_scope('conv5') as scope:
                 self.tensors.update({"pool5": self.convolve(5, [[3, 3, 512, 512],[3, 3, 512, 512],[3, 3, 512, 512]],
-                                                  [1,1,1,1], [1,2,2,1], input_name, snapshot)})
+                                                            [1, 1, 1, 1], [1, 2, 2, 1], input_name, snapshot)})
                 input_name = "pool5"
 
         '''
