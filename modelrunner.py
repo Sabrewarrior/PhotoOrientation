@@ -6,6 +6,8 @@ import os
 import time
 import tensorflow as tf
 from datahandler import input_pipeline, convert_binary_to_array
+from scipy.misc import imread, imresize
+import csv
 
 
 def dummy_reader(input_data):
@@ -133,38 +135,81 @@ def run_acc_batch(num_images, images, labels, model, sess, max_parallel_calcs=No
     return acc/repeat_num, timer
 
 
-def split_test_by_tags():
-    test_folder = "C:\\PhotoOrientation\\data\\data2\\test\\images"
-    dirs = [d for d in os.listdir(test_folder) if os.path.isdir(os.path.join(test_folder, d))]
-    print(dirs)
-    num_images = 0
-    for dir in dirs:
-        label = int(dir)//90
-        print(label)
-        for root_inner, dirnames_inner, filenames_actual in os.walk(os.path.join(test_folder, dir)):
-            for filename in filenames_actual:
-                print(dirnames_inner)
-                print(os.path.join(root_inner, filename))
-                print(label)
-                num_images += 1
-                if num_images == 10:
-                    break
+def split_acc_by_tags(model, sess, data_set="test"):
+    data_folder = "C:\\PhotoOrientation\\data2\\" + data_set + "\\images"
+    orientations = [d for d in os.listdir(data_folder) if os.path.isdir(os.path.join(data_folder, d))]
+    print(orientations)
+    image_stats = {}
+    total_images = 0
+    correct_images = 0
+
+    for orientation in orientations:
+        label = int(orientation)//90
+        orientation_dir = os.path.join(data_folder, orientation)
+        tags = [d for d in os.listdir(orientation_dir) if os.path.isdir(os.path.join(orientation_dir, d))]
+        for tag in tags:
+            print(tag)
+            if tag not in image_stats:
+                image_stats[tag] = {}
+            tag_dir = os.path.join(orientation_dir, tag)
+            layouts = [d for d in os.listdir(tag_dir) if os.path.isdir(os.path.join(tag_dir, d))]
+
+            for layout in layouts:
+                if (layout+"_total") not in image_stats[tag]:
+                    image_stats[tag][layout+"_total"] = 0
+                    image_stats[tag][layout+"_correct"] = 0
+                cur_dir = os.path.join(tag_dir, layout)
+                image_files = os.listdir(cur_dir)
+
+                for image_file in image_files:
+                    loaded_image = imread(os.path.join(cur_dir,image_file), mode='RGB')
+                    loaded_image = imresize(loaded_image, (224, 224))
+                    acc = sess.run(model.acc, feed_dict={model.inputs: [loaded_image], model.testy: [label],
+                                                         model.keep_probs: 1})
+                    total_images += 1
+                    image_stats[tag][layout + "_total"] += 1
+
+                    if acc > .5:
+                        correct_images += 1
+                        image_stats[tag][layout + "_correct"] += 1
+                    else:
+                        with open(os.path.join("C:\\PhotoOrientation\\data2\\stats", snapshot_folder + "-" +
+                                  snapshot_file[:-4] + "-" + data_set + ".txt"), "a") as incorrect_stored:
+                            incorrect_stored.write(os.path.join(cur_dir, image_file)+"\n")
+            print(image_stats[tag])
+
+    print("Correct: " + str(correct_images) + "\nTotal: " + str(total_images))
+    print("Total acc: ", str(correct_images/total_images))
+
+    with open(os.path.join("C:\\PhotoOrientation\\data2\\stats", snapshot_folder + "-" + snapshot_file[:-4] + "-" +
+              data_set + ".csv"), 'w', newline='') as csv_file:
+        writer = csv.writer(csv_file, lineterminator='\n')
+        writer.writerow(["Tag", "Landscape Correct", "Landscape Total", "Portrait Correct", "Portrait Total"])
+        for key, value in image_stats.items():
+            writer.writerow([key, value["L_correct"], value["L_total"], value["P_correct"], value["P_total"]])
+
+    sess.close()
+
+# Test by category outside of these ones
+# Take average of each category
+# Train by category and test same category
 
 if __name__ == "__main__":
+
     cur_model = None
     read_func = dummy_reader
     feature = "images"
 
-    data_folder = os.path.join("C:", os.sep, "PhotoOrientation", "data", "data2")
+    data_folder = os.path.join("C:", os.sep, "PhotoOrientation", "data2")
     print(data_folder)
     globalStep = tf.Variable(0, name='global_step', trainable=False)
-    ses = tf.Session(config=tf.ConfigProto(log_device_placement=True))
+    ses = tf.Session()#config=tf.ConfigProto(log_device_placement=True))
 
     vgg = True
     if vgg:
         batch_size = 25
         max_parallel_acc_calcs = 25
-        snapshot_folder = "snapshotVGG"
+        snapshot_folder = "snapshotVGG1"
         snapshot_file = "5.pkl"
         if os.path.exists(data_folder):
             M = pickle.load(open(os.path.join(data_folder, snapshot_folder, snapshot_file), 'rb'))
@@ -190,6 +235,11 @@ if __name__ == "__main__":
         feature="hog2"
         read_func = convert_binary_to_array
 
+    init = tf.initialize_all_variables()
+    ses.run(init)
+    split_acc_by_tags(cur_model, ses, "train")
+    exit()
+
     if not os.path.exists(os.path.join(data_folder, snapshot_folder)):
         os.mkdir(os.path.join(data_folder, snapshot_folder))
 
@@ -204,5 +254,4 @@ if __name__ == "__main__":
     ses.run(init)
     # if cur_model:
     #     run_model(cur_model, ses, globalStep, read_func)
-    split_test_by_tags()
 

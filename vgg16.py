@@ -50,13 +50,13 @@ class VGG16:
                 cur_conv = "conv" + str(layer_num) + "_" + str(conv_num)
                 print(cur_conv)
                 if snapshot:
+                    print("Snapshot found for " + cur_conv + " loading weights and biases")
                     kernel = snapshot[cur_conv + "_W"]
                     biases = snapshot[cur_conv + "_b"]
                 else:
                     kernel = tf.truncated_normal(conv_shape_list[conv_num - 1], dtype=tf.float32, stddev=1e-1)
                     biases = tf.constant(0.0, shape=[conv_shape_list[conv_num -1][-1]], dtype=tf.float32)
-                print(kernel.shape)
-                print(biases.shape)
+
                 self.parameters.update({cur_conv + "_W": tf.Variable(kernel, name="weights")})
                 self.parameters.update({cur_conv + "_b": tf.Variable(biases, trainable=True, name="weights")})
 
@@ -294,9 +294,10 @@ class VGG16:
     def fc_layers(self, input_name, snapshot):
         shape = int(np.prod(self.tensors[input_name].get_shape()[1:]))
         pool5_flat = tf.reshape(self.tensors[input_name], [-1, shape])
-        print(shape)
+        print("Shape of last conv is " + str(shape))
         with tf.name_scope('fc6') as scope:
-            if snapshot and shape == snapshot['fc6_W'].shape:
+            if snapshot and shape == snapshot['fc6_W'].shape[0]:
+                print("Snapshot found for fc6, loading weights and biases")
                 wl = snapshot['fc6_W']
                 bl = snapshot['fc6_b']
             else:
@@ -307,12 +308,12 @@ class VGG16:
             fc6l = tf.nn.bias_add(tf.matmul(pool5_flat, self.parameters['fc6_W']), self.parameters['fc6_b'])
             self.tensors.update({'fc6': tf.nn.dropout(tf.nn.relu(fc6l, name="activation"),self.keep_probs)})
 
-
         # fc7
         with tf.name_scope('fc7') as scope:
-            if snapshot and shape == snapshot['fc6_W'].shape:
+            if snapshot and shape == snapshot['fc6_W'].shape[0]:
                 wl = snapshot['fc7_W']
                 bl = snapshot['fc7_b']
+                print("Snapshot found for fc7, loading weights and biases")
             else:
                 wl = tf.truncated_normal([512, 512], dtype=tf.float32, stddev=1e-1)
                 bl = tf.constant(1.0, shape=[512], dtype=tf.float32)
@@ -322,11 +323,10 @@ class VGG16:
             fc7l = tf.nn.bias_add(tf.matmul(self.tensors['fc6'], self.parameters['fc7_W']), self.parameters['fc7_b'])
             self.tensors.update({'fc7': tf.nn.dropout(tf.nn.relu(fc7l, name="activation"),self.keep_probs)})
 
-
-
         # fc8
         with tf.name_scope('fc8') as scope:
-            if snapshot and shape == snapshot['fc6_W'].shape:
+            if snapshot and shape == snapshot['fc6_W'].shape[0]:
+                print("Snapshot found for fc8, loading weights and biases")
                 wl = snapshot['fc8_W']
                 bl = snapshot['fc8_b']
             else:
