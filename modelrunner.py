@@ -193,6 +193,8 @@ def split_acc_by_tags(model, sess, data_set="test"):
 # Test by category outside of these ones
 # Take average of each category
 # Train by category and test same category
+# Abstract art
+# Test with different bounding boxes
 
 if __name__ == "__main__":
 
