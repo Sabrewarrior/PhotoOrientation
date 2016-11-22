@@ -204,13 +204,13 @@ def make_train(image, hog_fd, degrees, out_dir, dirname, dirname_inner, filename
         os.makedirs(image_out_path)
     if not os.path.exists(hog_out_path):
         os.makedirs(hog_out_path)
-    np.save(os.path.join(hog_out_path,filename[:-4]),hog_fd)
-    imsave(os.path.join(image_out_path,filename),image,format='JPEG')
+    np.save(os.path.join(hog_out_path,filename[:-4]), hog_fd)
+    imsave(os.path.join(image_out_path, filename), image, format='JPEG')
 
 
 # Rotates counter-clockwise
 def rotate_image(imageArray, degrees):
-    if degrees !=0:
+    if degrees != 0:
         return rotate(imageArray, degrees)
     else:
         return imageArray
@@ -221,19 +221,19 @@ def generate_arrays(imageArray,visualise):
     image_to_hog = rgb2gray(image_to_hog)
     if visualise:
         hog_features, hog_image = hog(image_to_hog, orientations=9, pixels_per_cell=(16, 16),
-                        cells_per_block=(1, 1), visualise = True)
+                                      cells_per_block=(1, 1), visualise=True)
         hog_fd = hog_features.astype(np.float32)
         hog_image_rescaled = exposure.rescale_intensity(hog_image, in_range=(0, 0.02))
     else:
         hog_features = hog(image_to_hog, orientations=9, pixels_per_cell=(16, 16),
-                                      cells_per_block=(1, 1), visualise=False)
+                           cells_per_block=(1, 1), visualise=False)
         hog_fd = hog_features.astype(np.float32)
         hog_image_rescaled = None
     return hog_fd, hog_image_rescaled
 
 
 def save_image(imageArray, path):
-    #np.save(os.path.join(path[:-4]), hog_features)
+    # np.save(os.path.join(path[:-4]), hog_features)
     imsave(os.path.join(path), imageArray, format='JPEG')
 
 
@@ -245,13 +245,13 @@ def load_image(image_file_path, PIL_image=False):
     return imageArray
 
 
-def handler(image_dir, out_dir, save_array=False, visualise = False):
+def handler(image_dir, out_dir, save_array=False, visualise=False):
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
 
-    if not os.path.exists(os.path.join(out_dir,"train")):
+    if not os.path.exists(os.path.join(out_dir, "train")):
         os.mkdir(os.path.join(out_dir, "train"))
-    if not os.path.exists(os.path.join(out_dir,"train","images")):
+    if not os.path.exists(os.path.join(out_dir, "train", "images")):
         os.mkdir(os.path.join(out_dir, "train", "images"))
     if not os.path.exists(os.path.join(out_dir, "train", "hog")):
         os.mkdir(os.path.join(out_dir, "train", "hog"))
@@ -265,9 +265,9 @@ def handler(image_dir, out_dir, save_array=False, visualise = False):
 
     if not os.path.exists(os.path.join(out_dir, "valid")):
         os.makedirs(os.path.join(out_dir, "valid"))
-    if not os.path.exists(os.path.join(out_dir, "valid","images")):
+    if not os.path.exists(os.path.join(out_dir, "valid", "images")):
         os.makedirs(os.path.join(out_dir, "valid", "images"))
-    if not os.path.exists(os.path.join(out_dir, "valid","hog")):
+    if not os.path.exists(os.path.join(out_dir, "valid", "hog")):
         os.makedirs(os.path.join(out_dir, "valid", "hog"))
     num_cur = 0
     count_total = 0
@@ -287,9 +287,10 @@ def handler(image_dir, out_dir, save_array=False, visualise = False):
                 hog_valid_dict = {}
             if dirname is not "P" and dirname is not "L" and dirname.count('Meta') == 0:
                 print(dirname + ":")
-                for root_inner, dirnames_inner, filenames_inner in os.walk(os.path.join(root,dirname)):
-                    for dirname_inner in ["L","P"]:
-                        for root_actual, dirnames_extra, filenames_actual in os.walk(os.path.join(root_inner,dirname_inner)):
+                for root_inner, dirnames_inner, filenames_inner in os.walk(os.path.join(root, dirname)):
+                    for dirname_inner in ["L", "P"]:
+                        for root_actual, dirnames_extra, filenames_actual in \
+                                os.walk(os.path.join(root_inner, dirname_inner)):
                             count_total = 0
                             count_valid = 0
                             count_test = 0
@@ -315,9 +316,10 @@ def handler(image_dir, out_dir, save_array=False, visualise = False):
                                         img_test_dict[str(degrees)].append(image/255.)
                                         hog_test_dict[str(degrees)].append(hog_fd)
                                     else:
-                                        make_test(image,hog_fd,str(degrees),out_dir,dirname,dirname_inner,filename)
-                                    count_test+=1
-                                elif count_total%20 == 1:
+                                        make_test(image, hog_fd, str(degrees), out_dir, dirname, dirname_inner,
+                                                  filename)
+                                    count_test += 1
+                                elif count_total % 20 == 1:
                                     degrees = (count_valid % 4) * 90
                                     image = rotate_image(image, degrees)
                                     hog_fd, hog_image = generate_arrays(image, visualise)
@@ -325,19 +327,21 @@ def handler(image_dir, out_dir, save_array=False, visualise = False):
                                         img_valid_dict[str(degrees)].append(image/255.)
                                         hog_valid_dict[str(degrees)].append(hog_fd)
                                     else:
-                                        make_valid(image,hog_fd,str(degrees),out_dir,dirname,dirname_inner,filename)
+                                        make_valid(image, hog_fd, str(degrees), out_dir, dirname, dirname_inner,
+                                                   filename)
                                     count_valid += 1
                                 else:
                                     degrees = ((count_total-count_test-count_valid) % 4) * 90
-                                    counter[str(degrees)]+=1
+                                    counter[str(degrees)] += 1
                                     image = rotate_image(image, degrees)
                                     hog_fd, hog_image = generate_arrays(image, visualise)
                                     if save_array:
                                         img_train_dict[str(degrees)].append(image/255.)
                                         hog_train_dict[str(degrees)].append(hog_fd)
                                     else:
-                                        make_train(image,hog_fd,str(degrees),out_dir,dirname,dirname_inner,filename)
-                                count_total+=1
+                                        make_train(image, hog_fd, str(degrees), out_dir, dirname, dirname_inner,
+                                                   filename)
+                                count_total += 1
 
                                 if visualise:
                                     hog_meta_path = os.path.join(image_dir, dirname + "Meta", dirname_inner)
@@ -350,20 +354,19 @@ def handler(image_dir, out_dir, save_array=False, visualise = False):
                                     num_cur = str(
                                         int(math.ceil((count_total + (num_imgs - count_total) % num_imgs) / num_imgs)))
                                     print( dirname_inner + num_cur + " train: " + str(
-                                        count_total - count_test - count_valid) \
+                                        count_total - count_test - count_valid)
                                           + " test: " + str(count_test) + " valid: " + str(count_valid))
                                     save_pickle(out_dir, dirname + dirname_inner + num_cur, count_total, img_train_dict,
                                                 hog_train_dict, img_test_dict, hog_test_dict, img_valid_dict,
                                                 hog_valid_dict)
 
                         print(dirname_inner + " train: " + str(
-                            count_total - count_test - count_valid) \
+                            count_total - count_test - count_valid)
                               + " test: " + str(count_test) + " valid: " + str(count_valid))
 
                         if save_array:
                             save_pickle(out_dir, dirname + dirname_inner + num_cur, count_total, img_train_dict,
-                                    hog_train_dict, img_test_dict, hog_test_dict, img_valid_dict,
-                                    hog_valid_dict)
+                                        hog_train_dict, img_test_dict, hog_test_dict, img_valid_dict, hog_valid_dict)
 
                     break
         break
@@ -430,16 +433,16 @@ def resize_batch(input_folder,out_folder, resizeDims=(224,224)):
                                 in os.walk(os.path.join(root_inner, dirname_inner)):
                             for filename in filenames_actual:
                                 imageArray = load_image(os.path.join(root_actual, filename), PIL_image=True)
-                                imageArray = normalizeArray(imageArray, resizeDims = resizeDims)
-                                imageArray.save(os.path.join(out_folder,dirname,dirname_inner,filename),'JPEG')
+                                imageArray = normalizeArray(imageArray, resizeDims=resizeDims)
+                                imageArray.save(os.path.join(out_folder, dirname, dirname_inner, filename), 'JPEG')
 
 
 # image_folder_depth: /home/sample/data/images/label1/label2/label3/image.jpg has a value of 3.
 # ie. Number of folders after images folder
-def hog_batch(input_folder, out_folder, image_folder_depth=3,label="hog"):
+def hog_batch(input_folder, out_folder, image_folder_depth=3, label="hog"):
     corrupted = []
-    for data_set in ["test","train","valid"]:
-        image_list, label_list, tags_list = create_labeled_image_list(input_folder,data_set=data_set)
+    for data_set in ["test", "train", "valid"]:
+        image_list, label_list, tags_list = create_labeled_image_list(input_folder, data_set=data_set)
         count = 0
         for images in image_list:
             remaining = os.path.split(images)
@@ -447,22 +450,22 @@ def hog_batch(input_folder, out_folder, image_folder_depth=3,label="hog"):
 
             for i in range(image_folder_depth):
                 remaining = os.path.split(remaining[0])
-                outpath = os.path.join(remaining[1],outpath)
-            outpath = os.path.join(out_folder,data_set,label,outpath)
+                outpath = os.path.join(remaining[1], outpath)
+            outpath = os.path.join(out_folder, data_set, label, outpath)
             if not os.path.exists(os.path.split(outpath)[0]):
                 os.makedirs(os.path.split(outpath)[0])
             img = load_image(images)
             hog_fd, hod_image = generate_arrays(img, False)
-            pickle.dump(hog_fd,open(outpath[:-4]+'.npy',"wb"))
+            pickle.dump(hog_fd, open(outpath[:-4] + '.npy', "wb"))
 
             test_str = open(outpath[:-4]+'.npy','rb').read()
             test = pickle.loads(test_str)
             if sum(hog_fd - test) > 0.00001:
-                print("File " + outpath[:-4]+ ".npy is corrupt")
+                print("File " + outpath[:-4] + ".npy is corrupt")
                 corrupted.append(outpath[:-4]+".npy")
-            count+= 1
+            count += 1
         print(count)
-    pickle.dump(corrupted, open(os.path.join(out_folder,"invalid_hog.log"),"wb"))
+    pickle.dump(corrupted, open(os.path.join(out_folder, "invalid_hog.log"), "wb"))
 
 if __name__ == "__main__":
     t = int(time.time())
