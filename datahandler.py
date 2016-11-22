@@ -23,31 +23,35 @@ def read_my_file_format(filename_queue):
 '''
 
 
-def read_file_format(filename_queue, binary=False):
+def read_file_format(filename_queue, binary_file=False):
     label = tf.cast(filename_queue[1], tf.int32)
-    if binary:
+    tags = filename_queue[2]
+
+    if binary_file:
         image = tf.read_file(filename_queue[0])
     else:
+        tf.Print(filename_queue[0], [filename_queue[0]])
         tensor_image = tf.read_file(filename_queue[0])
-        image = tf.image.decode_jpeg(tensor_image, channels = 3)
-        image = tf.reshape(image,[224,224,3])
-    return image, label
+
+        image = tf.image.decode_jpeg(tensor_image, channels=3)
+
+        image = tf.image.resize_images(image, [224, 224])
+
+    return image, label, tags
 
 
-def input_pipeline(directory, batch_size, data_set="train", feature="images", num_epochs=None, num_images=None):
-    if feature.count("images") > 0:
-        binary = False
-    else:
-        binary = True
+def input_pipeline(directory, batch_size, data_set="train", feature="images", binary_file=False, num_epochs=None,
+                   num_images=None):
     with tf.name_scope('InputPipeline'):
         # Reads paths of images together with their labels
-        image_list, label_list = create_labeled_image_list(directory, data_set=data_set, feature=feature,
-                                                           num_images=num_images)
+        image_list, label_list, tags_list = create_labeled_image_list(directory, data_set=data_set, feature=feature,
+                                                                      num_images=num_images)
 
         # Makes an input queue
-        input_queue = tf.train.slice_input_producer([image_list, label_list],num_epochs=num_epochs)
-        image, label = read_file_format(input_queue, binary=binary)
-
+        input_queue = tf.train.slice_input_producer([image_list, label_list, tags_list], num_epochs=num_epochs)
+        print("Created queue")
+        image, label, tags = read_file_format(input_queue, binary_file=binary_file)
+        print("Read all files")
         # min_after_dequeue defines how big a buffer we will randomly sample
         #   from -- bigger means better shuffling but slower start up and more
         #   memory used.
@@ -56,13 +60,17 @@ def input_pipeline(directory, batch_size, data_set="train", feature="images", nu
         #   min_after_dequeue + (num_threads + a small safety margin) * batch_size
         min_after_dequeue = 10000
         capacity = min_after_dequeue + 3 * batch_size
-        if data_set.count("train") == 1:
-            image_batch, label_batch = tf.train.shuffle_batch([image, label], batch_size=batch_size, capacity=capacity,
-                                                          min_after_dequeue=min_after_dequeue, num_threads=10)
+        if data_set and data_set.count("train") == 1:
+            image_batch, label_batch, tags_batch = tf.train.shuffle_batch([image, label, tags], batch_size=batch_size,
+                                                                          capacity=capacity,
+                                                                          min_after_dequeue=min_after_dequeue,
+                                                                          num_threads=10)
         else:
-            image_batch, label_batch = tf.train.batch([image, label], batch_size=batch_size, capacity=capacity,
-                                  num_threads=10)
-        return image_batch, label_batch
+            print("Batching")
+            image_batch, label_batch, tags_batch = tf.train.batch([image, label, tags], batch_size=batch_size,
+                                                                  capacity=capacity, num_threads=10)
+            print("Finished batching")
+        return image_batch, label_batch, tags_batch
 
 
 def convert_binary_to_array(image_binary_list):
@@ -81,13 +89,18 @@ def convert_to_array(image_list):
     return images
 
 
-def create_labeled_image_list(directory, data_set="train", feature="images", num_images=None):
+def create_labeled_image_list(directory, data_set=None, feature="images", num_images=None):
     image_list = []
     label_list = []
-    directory = os.path.join(directory, data_set, feature)
+    tags_list = []
+    if data_set:
+        directory = os.path.join(directory, data_set)
+    if feature:
+        directory = os.path.join(directory, feature)
     limit = 0
     if not os.path.exists(directory):
-        print("Feature or dataset does not exist")
+        print("Feature or data set does not exist")
+        print(directory)
     for root, dirnames, filenames in os.walk(directory):
         print("Loading images from: " + root)
         for dirname in dirnames:
@@ -101,16 +114,23 @@ def create_labeled_image_list(directory, data_set="train", feature="images", num
                 label = 3
             for root_inner, dirnames_inner, filenames_actual in os.walk(os.path.join(root, dirname)):
                 for filename in filenames_actual:
+                    tags = filename
+                    res = os.path.split(root_inner)
+                    while res[1] != dirname:
+                        tags = os.path.join(res[1], tags)
+                        res = os.path.split(res[0])
+                    tags = os.path.join(dirname, tags)
                     if num_images is not None:
                         if limit == num_images:
                             break
-                    image_list.append(os.path.join(root_inner,filename))
+                    image_list.append(os.path.join(root_inner, filename))
                     label_list.append(label)
+                    tags_list.append(tags)
                     limit += 1
-        break
+        break  # Only checking the orientation directories here
 
     print(str(len(image_list)) + " images loaded")
-    return image_list, label_list
+    return image_list, label_list, tags_list
 
 
 def save_pickle(out_dir, tag_name, count_total, img_train_dict, hog_train_dict, img_test_dict, hog_test_dict,
@@ -419,7 +439,7 @@ def resize_batch(input_folder,out_folder, resizeDims=(224,224)):
 def hog_batch(input_folder, out_folder, image_folder_depth=3,label="hog"):
     corrupted = []
     for data_set in ["test","train","valid"]:
-        image_list, label_list = create_labeled_image_list(input_folder,data_set=data_set)
+        image_list, label_list, tags_list = create_labeled_image_list(input_folder,data_set=data_set)
         count = 0
         for images in image_list:
             remaining = os.path.split(images)
