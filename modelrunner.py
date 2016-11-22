@@ -30,7 +30,7 @@ def vgg_model1(batch_size, snapshot=None, global_step=None):
     return vgg16.VGG16(imgs,y_, learning_rate, max_pool_num=5, global_step=global_step, snapshot=snapshot)
 
 
-def run_model(model, sess, global_step, read_func, data_folder):
+def run_model(model, sess, global_step, read_func, data_folder, snapshot_folder):
     timers = {"batching": 0., "converting": 0., "training": 0., "testing": 0., "acc": 0., "total_tests": 0.}
     test_steps = 1000
     valid_steps = 10000
@@ -80,10 +80,10 @@ def run_model(model, sess, global_step, read_func, data_folder):
                     for key in model.parameters.keys():
                         snapshot[key] = sess.run(model.parameters[key])
                     print(timers)
-                    pickle.dump(snapshot, open(os.path.join(data_folder, snapshot_folder, str(steps // valid_steps)
+                    pickle.dump(snapshot, open(os.path.join(snapshot_folder, str(steps // valid_steps)
                                                             + ".pkl"), "wb"))
 
-                if test_acc >.99:
+                if test_acc > .99:
                     break
                 print("Training")
                 # snapshot = {}
@@ -99,7 +99,7 @@ def run_model(model, sess, global_step, read_func, data_folder):
         snapshot[key] = sess.run(model.parameters[key])
 
     pickle.dump(snapshot,
-                open(os.path.join(data_folder, snapshot_folder, "Final.pkl"), "wb"))
+                open(os.path.join(snapshot_folder, "Final.pkl"), "wb"))
 
     sess.close()
     for timer in timers.keys():
@@ -159,8 +159,6 @@ def parallel_acc_by_tags(model, sess, max_parallel_calcs, data_folder, data_set=
     steps = 0
     try:
         print("Checking Accuracy")
-        if coord.should_stop():
-            print("WHY are we here")
         while not coord.should_stop():
             steps += 1
             raw_imgs_list, labels_list, tags_list = sess.run([images, labels, tags])
@@ -169,6 +167,8 @@ def parallel_acc_by_tags(model, sess, max_parallel_calcs, data_folder, data_set=
                                                                      model.keep_probs: 1})
             total_images += len(preds)
             incorrect_indices = np.where(preds == 0)
+
+            # Uses locking so we do not lose any incorrect classifications
             sess.run(add_incorrect_images, feed_dict={adder_image_names: tags_list[incorrect_indices]})
             if steps % 100 == 0:
                 print("Calculated " + str(steps*max_parallel_calcs) + " files")
@@ -188,12 +188,19 @@ def parallel_acc_by_tags(model, sess, max_parallel_calcs, data_folder, data_set=
     sess.close()
 
 
-def split_acc_by_tags(model, sess, data_folder, data_set="test", feature="images"):
+def split_acc_by_tags(model, sess, data_folder, snapshot_filename, data_set="test", feature="images"):
+    stat_filename = os.path.split(os.path.split(snapshot_filename)[0])[1] + "-" + \
+                    os.path.split(snapshot_filename)[1][:-4] + "-" + \
+                    data_set
     if data_set:
-        data_folder = os.path.join(data_folder, data_set)
+        data_set = os.path.join(data_folder, data_set)
+    else:
+        data_set = data_folder
     if feature:
-        data_folder = os.path.join(data_folder, feature)
-    orientations = [d for d in os.listdir(data_folder) if os.path.isdir(os.path.join(data_folder, d))]
+        feature = os.path.join(data_set, feature)
+    else:
+        feature = data_set
+    orientations = [d for d in os.listdir(feature) if os.path.isdir(os.path.join(feature, d))]
     print(orientations)
     image_stats = {}
     total_images = 0
@@ -201,7 +208,7 @@ def split_acc_by_tags(model, sess, data_folder, data_set="test", feature="images
 
     for orientation in orientations:
         label = int(orientation)//90
-        orientation_dir = os.path.join(data_folder, orientation)
+        orientation_dir = os.path.join(feature, orientation)
         tags = [d for d in os.listdir(orientation_dir) if os.path.isdir(os.path.join(orientation_dir, d))]
         for tag in tags:
             print(tag)
@@ -229,16 +236,14 @@ def split_acc_by_tags(model, sess, data_folder, data_set="test", feature="images
                         correct_images += 1
                         image_stats[tag][layout + "_correct"] += 1
                     else:
-                        with open(os.path.join("C:\\PhotoOrientation\\data2\\stats", snapshot_folder + "-" +
-                                  snapshot_file[:-4] + "-" + data_set + ".txt"), "a") as incorrect_stored:
+                        with open(os.path.join(data_folder, "stats", stat_filename + ".txt"), "a") as incorrect_stored:
                             incorrect_stored.write(os.path.join(cur_dir, image_file)+"\n")
             print(image_stats[tag])
 
     print("Correct: " + str(correct_images) + "\nTotal: " + str(total_images))
     print("Total acc: ", str(correct_images/total_images))
 
-    with open(os.path.join("C:\\PhotoOrientation\\data2\\stats", snapshot_folder + "-" + snapshot_file[:-4] + "-" +
-              data_set + ".csv"), 'w', newline='') as csv_file:
+    with open(os.path.join(data_folder, "stats", stat_filename + ".csv"), 'w', newline='') as csv_file:
         writer = csv.writer(csv_file, lineterminator='\n')
         writer.writerow(["Tag", "Landscape Correct", "Landscape Total", "Portrait Correct", "Portrait Total"])
         for key, value in image_stats.items():
@@ -253,7 +258,6 @@ def split_acc_by_tags(model, sess, data_folder, data_set="test", feature="images
 # Test with different bounding boxes
 
 if __name__ == "__main__":
-
     cur_model = None
     read_func = dummy_reader
     feature_type = "images"
@@ -264,43 +268,41 @@ if __name__ == "__main__":
     ses = tf.Session()  # config=tf.ConfigProto(log_device_placement=True))
 
     vgg = True
+    load_snapshot_filename = "C:\\PhotoOrientation\\data2\\snapshotVGG1\\5.pkl"
+    snapshot_save_folder = "C:\\PhotoOrientation\\data2\\snapshotVGG2"
     if vgg:
         batch_size = 25
         max_parallel_acc_calcs = 50
-        snapshot_folder = "C:\\PhotoOrientation\\data2\\snapshotVGG1"
-        snapshot_file = "5.pkl"
-        if os.path.exists(snapshot_folder):
-            M = pickle.load(open(os.path.join(snapshot_folder, snapshot_file), 'rb'))
+
+        if os.path.exists(load_snapshot_filename):
+            M = pickle.load(open(load_snapshot_filename, 'rb'))
             print("Snapshot Loaded")
         else:
+            print("Snapshot not found, loading default weights")
             M = np.load('vgg16_weights.npz')
         feature_type = "images"
-        snapshot_folder = "C:\\PhotoOrientation\\data2\\snapshotVGG2"
         cur_model = vgg_model1(batch_size, snapshot=M, global_step=globalStep)
         bin_or_not = False
     else:
         batch_size = 100
         max_parallel_acc_calcs = 1000
-        snapshot_folder = "snapshotHOG"
-        snapshot_file = "457.pkl"
-        if os.path.exists(data_folder_loc):
-            M = pickle.load(open(os.path.join(data_folder_loc, snapshot_folder, snapshot_file), 'rb'))
+        if os.path.exists(load_snapshot_filename):
+            M = pickle.load(open(os.path.join(load_snapshot_filename), 'rb'))
             print("Snapshot Loaded")
         else:
+            print("Snapshot not found, loading default weights")
             M = pickle.load(open("snapshotHOG\\457.pkl", 'rb'))
 
         cur_model = hog_model(batch_size, snapshot=M, global_step=globalStep)
 
-        feature_type="hog2"
+        feature_type = "hog2"
         read_func = convert_binary_to_array
         bin_or_not = True
     parallel_acc_by_tags(cur_model, ses, max_parallel_acc_calcs, data_folder_loc, data_set="", feature="images")
     exit()
-    # split_acc_by_tags(cur_model, ses, data_folder, data_set="train", feature="images")
-    # exit()
 
-    if not os.path.exists(os.path.join(data_folder_loc, snapshot_folder)):
-        os.mkdir(os.path.join(data_folder_loc, snapshot_folder))
+    # split_acc_by_tags(cur_model, ses, data_folder, load_snapshot_filename, data_set="train", feature="images")
+    # exit()
 
     num_test_images = 12000
     num_valid_images = 12000
@@ -315,7 +317,8 @@ if __name__ == "__main__":
     init = tf.initialize_all_variables()
     ses.run(init)
 
-
     # if cur_model:
-    #     run_model(cur_model, ses, globalStep, read_func, data_folder_loc)
+    #     if not os.path.exists(os.path.join(data_folder_loc, snapshot_save_folder)):
+    #         os.makedirs(os.path.join(data_folder_loc, snapshot_save_folder))
+    #     run_model(cur_model, ses, globalStep, read_func, data_folder_loc, snapshot_save_folder)
 
