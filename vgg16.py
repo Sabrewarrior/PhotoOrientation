@@ -15,29 +15,45 @@ from scipy.misc import imread, imresize
 from imagenet_classes import class_names
 import os
 import tensorflow as tf
-
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import gen_nn_ops
 
 class VGG16:
-    def __init__(self, imgs, y_, learning_rate, max_pool_num=5, global_step=None, snapshot=None):
+    def __init__(self, imgs, y_, learning_rate, max_pool_num=5, guided_grad=False, global_step=None, snapshot=None):
+
         self.inputs = imgs
         self.labels = y_
+        self.testy = tf.placeholder(tf.int32, [None, ], name="Test_y")
         self.parameters = {}
         self.tensors = {}
         self.global_step = global_step
-        self.keep_probs = tf.Variable(0.75, name='keep_probs', trainable=False, dtype=tf.float32)
-        last_pool_name = self.create_conv_layers(snapshot, max_pool_num)
-
-        self.outputs = self.fc_layers(last_pool_name, snapshot)
         self.learning_rate = learning_rate
+        self.keep_probs = tf.Variable(0.75, name='keep_probs', trainable=False, dtype=tf.float32)
+        if guided_grad:
+            @ops.RegisterGradient("GuidedRelu")
+            def _guided_relu_grad(op, grad):
+                return tf.select(0. < grad, gen_nn_ops._relu_grad(grad, op.outputs[0]), tf.zeros(grad.get_shape()))
+
+            with tf.Graph().as_default() as g:
+                with g.gradient_override_map({'Relu': 'GuidedRelu'}):
+                    last_pool_name = self.create_conv_layers(snapshot, max_pool_num)
+                    self.outputs = self.fc_layers(last_pool_name, snapshot)
+        else:
+            last_pool_name = self.create_conv_layers(snapshot, max_pool_num)
+            self.outputs = self.fc_layers(last_pool_name, snapshot)
+
         self.train_step = self.training()
         self.acc = self.accuracy()
 
+    def probability(self):
+        return tf.nn.softmax(self.outputs)
+
+    def correct_predictions(self):
+        return tf.equal(tf.argmax(self.probability(), 1), tf.to_int64(self.testy))
+
     def accuracy(self):
         with tf.name_scope("Accuracy"):
-            self.testy = tf.placeholder(tf.int32, [None, ], name="Test_y")
-            self.probs = tf.nn.softmax(self.outputs)
-            correct_prediction = tf.equal(tf.argmax(self.probs, 1), tf.to_int64(self.testy))
-            return tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+            return tf.reduce_mean(tf.cast(self.correct_predictions(), tf.float32))
 
     def training(self):
         with tf.name_scope("Training"):
@@ -107,7 +123,7 @@ class VGG16:
 
     def fc_layers(self, input_name, snapshot):
         shape = int(np.prod(self.tensors[input_name].get_shape()[1:]))
-        pool5_flat = tf.reshape(self.tensors[input_name], [-1, shape])
+        final_pool_flat = tf.reshape(self.tensors[input_name], [-1, shape])
         print("Shape of last conv is " + str(shape))
         with tf.name_scope('fc6') as scope:
             if snapshot and shape == snapshot['fc6_W'].shape[0]:
@@ -119,7 +135,7 @@ class VGG16:
                 bl = tf.constant(1.0, shape=[512], dtype=tf.float32)
             self.parameters.update({"fc6_W": tf.Variable(wl, trainable=True, name='weights')})
             self.parameters.update({"fc6_b": tf.Variable(bl, trainable=True, name='biases')})
-            fc6l = tf.nn.bias_add(tf.matmul(pool5_flat, self.parameters['fc6_W']), self.parameters['fc6_b'])
+            fc6l = tf.nn.bias_add(tf.matmul(final_pool_flat, self.parameters['fc6_W']), self.parameters['fc6_b'])
             self.tensors.update({'fc6': tf.nn.dropout(tf.nn.relu(fc6l, name="activation"),self.keep_probs)})
 
         # fc7
