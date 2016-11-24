@@ -2,6 +2,7 @@ from shutil import copyfile
 import os
 import numpy as np
 
+
 def copy_incorrect(in_folder, out_folder):
     f = open(os.path.join(in_folder, "stats", "snapshotVGG1-5-test.txt"), "r")
     page = f.read()
@@ -11,7 +12,7 @@ def copy_incorrect(in_folder, out_folder):
     count = 0
     for source in sources:
         if source.find("jpg") >= 0:
-            count+=1
+            count += 1
             res, filename = os.path.split(source)
             res, layout = os.path.split(res)
             res, tag = os.path.split(res)
