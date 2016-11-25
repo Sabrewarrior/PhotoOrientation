@@ -1,7 +1,7 @@
 import os
 import math
 import time
-from random import shuffle, seed
+from random import shuffle
 from scipy.misc import imread, imsave
 from skimage.color import rgb2gray
 import numpy as np
@@ -23,9 +23,13 @@ def read_my_file_format(filename_queue):
 '''
 
 
-def read_file_format(filename_queue, binary_file=False):
-    label = tf.cast(filename_queue[1], tf.int32)
-    tags = filename_queue[2]
+def read_file_format(filename_queue, binary_file=False, rand_label=False, rand_seed=None):
+    if rand_label:
+        random_num = tf.random_uniform([1], minval=0, maxval=4, dtype=tf.int32, seed=rand_seed)
+        label = random_num[0]
+    else:
+        label = tf.cast(filename_queue[2], tf.int32)
+    tags = filename_queue[1]
 
     if binary_file:
         image = tf.read_file(filename_queue[0])
@@ -36,21 +40,32 @@ def read_file_format(filename_queue, binary_file=False):
         image = tf.image.decode_jpeg(tensor_image, channels=3)
 
         image = tf.image.resize_images(image, [224, 224])
+        if rand_label:
+            image = tf.image.rot90(image, k=label)
 
     return image, label, tags
 
 
 def input_pipeline(directory, batch_size, data_set="train", feature="images", binary_file=False, num_epochs=None,
-                   num_images=None):
+                   num_images=None, rand_label=False, rand_seed=None):
     with tf.name_scope('InputPipeline'):
         # Reads paths of images together with their labels
-        image_list, label_list, tags_list = create_labeled_image_list(directory, data_set=data_set, feature=feature,
-                                                                      num_images=num_images)
+        if not rand_seed:
+            rand_seed = int(time.time())
+
+        if rand_label:
+            image_list, label_list, tags_list = create_labeled_image_list(directory, data_set=data_set, feature=feature,
+                                                                          num_images=num_images, rand_label=True)
+            input_queue = tf.train.slice_input_producer([image_list, tags_list], num_epochs=num_epochs)
+        else:
+            image_list, label_list, tags_list = create_labeled_image_list(directory, data_set=data_set, feature=feature,
+                                                                          num_images=num_images, rand_label=False)
+            input_queue = tf.train.slice_input_producer([image_list, tags_list, label_list], num_epochs=num_epochs)
 
         # Makes an input queue
-        input_queue = tf.train.slice_input_producer([image_list, label_list, tags_list], num_epochs=num_epochs)
         print("Created queue")
-        image, label, tags = read_file_format(input_queue, binary_file=binary_file)
+        image, label, tags = read_file_format(input_queue, binary_file=binary_file, rand_label=rand_label,
+                                              rand_seed=rand_seed)
         print("Read all files")
         # min_after_dequeue defines how big a buffer we will randomly sample
         #   from -- bigger means better shuffling but slower start up and more
@@ -89,7 +104,7 @@ def convert_to_array(image_list):
     return images
 
 
-def create_labeled_image_list(directory, data_set=None, feature="images", num_images=None):
+def create_labeled_image_list(directory, data_set=None, feature="images", num_images=None, rand_label=False):
     image_list = []
     label_list = []
     tags_list = []
@@ -97,40 +112,63 @@ def create_labeled_image_list(directory, data_set=None, feature="images", num_im
         directory = os.path.join(directory, data_set)
     if feature:
         directory = os.path.join(directory, feature)
-    limit = 0
     if not os.path.exists(directory):
         print("Feature or data set does not exist")
         print(directory)
     for root, dirnames, filenames in os.walk(directory):
         print("Loading images from: " + root)
-        for dirname in dirnames:
-            if dirname == '0':
-                label = 0
-            elif dirname == '90':
-                label = 1
-            elif dirname == '180':
-                label = 2
-            else:
-                label = 3
-            for root_inner, dirnames_inner, filenames_actual in os.walk(os.path.join(root, dirname)):
-                for filename in filenames_actual:
-                    tags = filename
-                    res = os.path.split(root_inner)
-                    while res[1] != dirname:
-                        tags = os.path.join(res[1], tags)
-                        res = os.path.split(res[0])
-                    tags = os.path.join(dirname, tags)
-                    if num_images is not None:
-                        if limit == num_images:
-                            break
-                    image_list.append(os.path.join(root_inner, filename))
-                    label_list.append(label)
-                    tags_list.append(tags)
-                    limit += 1
+        if rand_label:
+            temp_images, temp_labels, temp_tags, num_images_found = \
+                create_labeled_image_list_helper(root, limit=num_images)
+            image_list.extend(temp_images)
+            label_list.extend(temp_labels)
+            tags_list.extend(temp_tags)
+            break
+        else:
+            for dirname in dirnames:
+                if dirname == '0':
+                    label = 0
+                elif dirname == '90':
+                    label = 1
+                elif dirname == '180':
+                    label = 2
+                else:
+                    label = 3
+                temp_images, temp_labels, temp_tags, num_images_found = \
+                    create_labeled_image_list_helper(root, label=label, limit=num_images)
+                if num_images:
+                    num_images -= num_images_found
+                image_list.extend(temp_images)
+                label_list.extend(temp_labels)
+                tags_list.extend(temp_tags)
         break  # Only checking the orientation directories here
 
     print(str(len(image_list)) + " images loaded")
     return image_list, label_list, tags_list
+
+
+def create_labeled_image_list_helper(directory, label=None, limit=None):
+    image_list = []
+    label_list = []
+    tags_list = []
+    num_images = 0
+    for root, dirnames, filenames in os.walk(os.path.join(directory)):
+        for filename in filenames:
+            if limit is not None:
+                if limit == num_images:
+                    break
+            tags = filename
+            res = os.path.split(root)
+            while res[0] != directory:
+                tags = os.path.join(res[1], tags)
+                res = os.path.split(res[0])
+            if label:  # If image has a label, get the directory of the label
+                tags = os.path.join(res[1], tags)
+                label_list.append(label)
+            image_list.append(os.path.join(root, filename))
+            tags_list.append(tags)
+            num_images += 1
+    return image_list, label_list, tags_list, num_images
 
 
 def save_pickle(out_dir, tag_name, count_total, img_train_dict, hog_train_dict, img_test_dict, hog_test_dict,
@@ -471,8 +509,7 @@ if __name__ == "__main__":
     t = int(time.time())
     # t = 1454219613
     print("t=", t)
-    seed(t)
-    #hog_batch("/home/ujash/nvme/data2","/home/ujash/nvme/data2", label="hog2")
-    #resize_batch("/home/ujash/images_flickr/down1","/home/ujash/images_flickr/down4")
+    # hog_batch("/home/ujash/nvme/data2","/home/ujash/nvme/data2", label="hog2")
+    # resize_batch("/home/ujash/images_flickr/down1","/home/ujash/images_flickr/down4")
 
-    #handler("/home/ujash/nvme/down4","/home/ujash/nvme/data2")
+    # handler("/home/ujash/nvme/down4","/home/ujash/nvme/data2")
