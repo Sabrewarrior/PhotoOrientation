@@ -4,15 +4,22 @@ import csv
 import numpy as np
 
 
-def find_num_images_by_tag(data_folder):
+def find_num_images_by_tag(data_folder, class_names_file=None):
     num_images_by_tag = {}
-    for root, dirnames, filenames in os.walk(data_folder):
-        for filename in filenames:
-            tag = os.path.split(root)[1]
-            if tag not in num_images_by_tag:
-                num_images_by_tag[tag] = 1
-            else:
-                num_images_by_tag[tag] += 1
+    if class_names_file:
+        with open(class_names_file, "r") as class_names:
+            class_data_folders = class_names.read().split('\n')
+            class_data_folders.remove("")
+    else:
+        class_data_folders = [""]
+
+    for class_data_folder in class_data_folders:
+        for root, dirnames, filenames in os.walk(os.path.join(data_folder, class_data_folder)):
+            for filename in filenames:
+                if class_data_folder not in num_images_by_tag:
+                    num_images_by_tag[class_data_folder] = filename.count(".jpg")
+                else:
+                    num_images_by_tag[class_data_folder] += filename.count(".jpg")
     return num_images_by_tag
 
 
@@ -111,7 +118,9 @@ def convert_files_to_jpeg(data_folder):
     print("Incorrect files: " + str(wrong_file))
 
 
-def write_dict_to_csv(data_set_stats, data_stats_folder, stat_filename, col_keys=["Value"]):
+def write_dict_to_csv(data_set_stats, data_stats_folder, stat_filename, col_keys=None):
+    if not col_keys:
+        col_keys = ["Value"]
     if not os.path.exists(data_stats_folder):
         os.makedirs(data_stats_folder)
     with open(os.path.join(data_stats_folder, stat_filename + ".csv"), 'w', newline='') as csv_file:
@@ -130,10 +139,11 @@ def write_dict_to_csv(data_set_stats, data_stats_folder, stat_filename, col_keys
 
 if __name__ == "__main__":
     data_folder_loc = os.path.join("D:\\PhotoOrientation", "SUN397", "images")
-    image_nums = find_num_images_by_tag(data_folder_loc)
+    image_nums = find_num_images_by_tag(data_folder_loc,
+                                        os.path.join(os.path.split(data_folder_loc)[0], "ClassName.txt"))
     for tag in image_nums:
         print(tag + ": " + str(image_nums[tag]))
-    write_dict_to_csv(image_nums, os.path.join(os.path.split(data_folder_loc)[0],"stats"), "data_info",
+    write_dict_to_csv(image_nums, os.path.join(os.path.split(data_folder_loc)[0], "stats"), "data_info",
                       col_keys=["Num Images"])
 
     # copy_incorrect(data_folder, data_folder)
