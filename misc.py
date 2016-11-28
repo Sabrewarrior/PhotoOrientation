@@ -5,21 +5,33 @@ import numpy as np
 
 
 def find_num_images_by_tag(data_folder, class_names_file=None):
+    print(class_names_file)
     num_images_by_tag = {}
     if class_names_file:
         with open(class_names_file, "r") as class_names:
             class_data_folders = class_names.read().split('\n')
             class_data_folders.remove("")
+            for i in range(len(class_data_folders)):
+                if class_data_folders[i].count("/") > 0:
+                    class_data_folders[i] = os.path.join(*class_data_folders[i].split("/"))
+                elif class_data_folders[i].count("\\") > 0:
+                    class_data_folders[i] = os.path.join(*class_data_folders[i].split("\\"))
+            print(class_data_folders)
+            print(len(class_data_folders))
     else:
         class_data_folders = [""]
 
     for class_data_folder in class_data_folders:
         for root, dirnames, filenames in os.walk(os.path.join(data_folder, class_data_folder)):
+            if class_data_folder == "":
+                tag = os.path.split(root)[1]
+            else:
+                tag = class_data_folder
             for filename in filenames:
-                if class_data_folder not in num_images_by_tag:
-                    num_images_by_tag[class_data_folder] = filename.count(".jpg")
+                if tag not in num_images_by_tag:
+                    num_images_by_tag[tag] = filename.count(".jpg")
                 else:
-                    num_images_by_tag[class_data_folder] += filename.count(".jpg")
+                    num_images_by_tag[tag] += filename.count(".jpg")
     return num_images_by_tag
 
 
