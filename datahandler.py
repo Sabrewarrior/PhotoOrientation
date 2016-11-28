@@ -23,12 +23,9 @@ def read_my_file_format(filename_queue):
 '''
 
 
-def read_file_format(filename_queue, binary_file=False, rand_label=False, rand_seed=None):
-    if rand_label:
-        random_num = tf.random_uniform([1], minval=0, maxval=4, dtype=tf.int32, seed=rand_seed)
-        label = random_num[0]
-    else:
-        label = tf.cast(filename_queue[2], tf.int32)
+def read_file_format(filename_queue, binary_file=False, rot_to_label=False):
+
+    label = tf.cast(filename_queue[2], tf.int32)
     tags = filename_queue[1]
 
     if binary_file:
@@ -39,33 +36,27 @@ def read_file_format(filename_queue, binary_file=False, rand_label=False, rand_s
 
         image = tf.image.decode_jpeg(tensor_image, channels=3)
 
-        image = tf.image.resize_images(image, [224, 224])
-        if rand_label:
+        if rot_to_label:
             image = tf.image.rot90(image, k=label)
 
+        image = tf.image.resize_images(image, [224, 224])
     return image, label, tags
 
 
 def input_pipeline(directory, batch_size, data_set="train", feature="images", binary_file=False, num_epochs=None,
-                   num_images=None, rand_label=False, rand_seed=None):
+                   num_images=None, labeled_data=False, rand_seed=None):
     with tf.name_scope('InputPipeline'):
         # Reads paths of images together with their labels
         if not rand_seed:
             rand_seed = int(time.time())
 
-        if rand_label:
-            image_list, label_list, tags_list = create_labeled_image_list(directory, data_set=data_set, feature=feature,
-                                                                          num_images=num_images, rand_label=True)
-            input_queue = tf.train.slice_input_producer([image_list, tags_list], num_epochs=num_epochs)
-        else:
-            image_list, label_list, tags_list = create_labeled_image_list(directory, data_set=data_set, feature=feature,
-                                                                          num_images=num_images, rand_label=False)
-            input_queue = tf.train.slice_input_producer([image_list, tags_list, label_list], num_epochs=num_epochs)
+        image_list, label_list, tags_list = create_labeled_image_list(directory, data_set=data_set, feature=feature,
+                                                                      num_images=num_images, labeled_data=labeled_data)
+        input_queue = tf.train.slice_input_producer([image_list, tags_list, label_list], num_epochs=num_epochs)
 
         # Makes an input queue
         print("Created queue")
-        image, label, tags = read_file_format(input_queue, binary_file=binary_file, rand_label=rand_label,
-                                              rand_seed=rand_seed)
+        image, label, tags = read_file_format(input_queue, binary_file=binary_file, rot_to_label=not labeled_data)
         print("Read all files")
         # min_after_dequeue defines how big a buffer we will randomly sample
         #   from -- bigger means better shuffling but slower start up and more
@@ -79,7 +70,7 @@ def input_pipeline(directory, batch_size, data_set="train", feature="images", bi
             image_batch, label_batch, tags_batch = tf.train.shuffle_batch([image, label, tags], batch_size=batch_size,
                                                                           capacity=capacity,
                                                                           min_after_dequeue=min_after_dequeue,
-                                                                          num_threads=10)
+                                                                          num_threads=10, seed=rand_seed)
         else:
             print("Batching")
             image_batch, label_batch, tags_batch = tf.train.batch([image, label, tags], batch_size=batch_size,
@@ -104,7 +95,7 @@ def convert_to_array(image_list):
     return images
 
 
-def create_labeled_image_list(directory, data_set=None, feature="images", num_images=None, rand_label=False):
+def create_labeled_image_list(directory, data_set=None, feature="images", num_images=None, labeled_data=False):
     image_list = []
     label_list = []
     tags_list = []
@@ -117,7 +108,7 @@ def create_labeled_image_list(directory, data_set=None, feature="images", num_im
         print(directory)
     for root, dirnames, filenames in os.walk(directory):
         print("Loading images from: " + root)
-        if rand_label:
+        if not labeled_data:
             temp_images, temp_labels, temp_tags, num_images_found = \
                 create_labeled_image_list_helper(root, limit=num_images)
             image_list.extend(temp_images)
@@ -165,9 +156,15 @@ def create_labeled_image_list_helper(directory, label=None, limit=None):
             if label:  # If image has a label, get the directory of the label
                 tags = os.path.join(res[1], tags)
                 label_list.append(label)
-            image_list.append(os.path.join(root, filename))
-            tags_list.append(tags)
-            num_images += 1
+                image_list.append(os.path.join(root, filename))
+                tags_list.append(tags)
+                num_images += 1
+            else:
+                tags = [os.path.join(res[1], tags)]*4
+                label_list.extend([0, 1, 2, 3])
+                image_list.extend([os.path.join(root, filename)]*4)
+                tags_list.extend(tags)
+                num_images += 4
     return image_list, label_list, tags_list, num_images
 
 

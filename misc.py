@@ -3,6 +3,18 @@ import os
 import numpy as np
 
 
+def find_num_images_by_tag(data_folder):
+    num_images_by_tag = {}
+    for root, dirnames, filenames in os.walk(data_folder):
+        for filename in filenames:
+            tag = os.path.split(root)[1]
+            if tag not in num_images_by_tag:
+                num_images_by_tag[tag] = 1
+            else:
+                num_images_by_tag[tag] += 1
+    return num_images_by_tag
+
+
 def copy_incorrect(in_folder, out_folder):
     f = open(os.path.join(in_folder, "stats", "snapshotVGG1-5-test.txt"), "r")
     page = f.read()
@@ -98,7 +110,7 @@ def convert_files_to_jpeg(data_folder):
     print("Incorrect files: " + str(wrong_file))
 
 if __name__ == "__main__":
-    data_folder_loc = os.path.join("C:\\PhotoOrientation", "SUNdatabase", "images")
+    data_folder_loc = os.path.join("D:\\PhotoOrientation", "SUNdatabase", "images")
     # copy_incorrect(data_folder, data_folder)
-    convert_files_to_jpeg(data_folder_loc)
+    # convert_files_to_jpeg(data_folder_loc)
 
