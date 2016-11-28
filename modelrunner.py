@@ -149,7 +149,8 @@ def parallel_acc_by_tags(model, sess, max_parallel_calcs, data_folder, data_set=
     incorrect_images_list = tf.Variable([], dtype=tf.string, trainable=False, name="Incorrect_images")
     adder_image_names = tf.placeholder(dtype=tf.string, shape=[None], name="Adder_images")
     new_incorrect_images_list = tf.concat(0, [incorrect_images_list, adder_image_names])
-    add_incorrect_images = tf.assign(incorrect_images_list, new_incorrect_images_list, use_locking=True, validate_shape=False)
+    add_incorrect_images = tf.assign(incorrect_images_list, new_incorrect_images_list, use_locking=True,
+                                     validate_shape=False)
 
     init_ops = tf.group(tf.initialize_all_variables(), tf.initialize_local_variables())
     sess.run(init_ops)

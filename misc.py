@@ -1,5 +1,6 @@
 from shutil import copyfile
 import os
+import csv
 import numpy as np
 
 
@@ -109,8 +110,32 @@ def convert_files_to_jpeg(data_folder):
     print("Total files: " + str(count))
     print("Incorrect files: " + str(wrong_file))
 
+
+def write_dict_to_csv(data_set_stats, data_stats_folder, stat_filename, col_keys=["Value"]):
+    if not os.path.exists(data_stats_folder):
+        os.makedirs(data_stats_folder)
+    with open(os.path.join(data_stats_folder, stat_filename + ".csv"), 'w', newline='') as csv_file:
+        writer = csv.writer(csv_file, lineterminator='\n')
+        writer.writerow(["Tag"] + col_keys)
+        keys = sorted(data_set_stats.keys())
+        for key in keys:
+            row_list = [key]
+            if len(col_keys) > 1:
+                for col_key in col_keys:
+                    row_list.append(data_set_stats[key][col_key])
+            else:
+                row_list.append(data_set_stats[key])
+            writer.writerow(row_list)
+
+
 if __name__ == "__main__":
-    data_folder_loc = os.path.join("D:\\PhotoOrientation", "SUNdatabase", "images")
+    data_folder_loc = os.path.join("D:\\PhotoOrientation", "SUN397", "images")
+    image_nums = find_num_images_by_tag(data_folder_loc)
+    for tag in image_nums:
+        print(tag + ": " + str(image_nums[tag]))
+    write_dict_to_csv(image_nums, os.path.join(os.path.split(data_folder_loc)[0],"stats"), "data_info",
+                      col_keys=["Num Images"])
+
     # copy_incorrect(data_folder, data_folder)
     # convert_files_to_jpeg(data_folder_loc)
 
