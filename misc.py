@@ -64,12 +64,14 @@ def copy_incorrect(in_folder, out_folder):
 # 0x42 0x4d = BMP
 # 0x47 0x49 = GIF
 # 0x89 0x50 = PNG
-def convert_files_to_jpeg(data_folder):
+def convert_files_to_jpeg(data_folder, outfolder):
     import binascii
     from scipy.misc import imread, imsave
     count = 0
     wrong_file = 0
-
+    if not os.path.exists(outfolder):
+        os.makedirs(outfolder)
+    inc_files = open(os.path.join(outfolder,"not_jpg_files.txt"),"w")
     # Find files with incorrect starting
     for root_inner, dir_inner, files in os.walk(data_folder):
         for file_name in files:
@@ -78,25 +80,25 @@ def convert_files_to_jpeg(data_folder):
                 page = f.read(2)
             page = binascii.hexlify(page)
             count += 1
-            print(page)
+            # print(page)
             if page != b'ffd8':
                 image = imread(orig_file)
-
-                temp_fixed_dir = root_inner.replace("images", "fixed_images")
+                temp_fixed_dir = root_inner.replace(data_folder, os.path.join(outfolder, "converted_images"))
                 if not os.path.exists(temp_fixed_dir):
                     os.makedirs(temp_fixed_dir)
-                temp_file = os.path.join(temp_fixed_dir, file_name)
-                imsave(os.path.join(temp_file), image, format='JPEG')
+                temp_file_name = os.path.join(temp_fixed_dir, file_name)
+                imsave(os.path.join(temp_file_name), image, format='JPEG')
 
-                temp_incorrect_dir = root_inner.replace("images", "saved_incorrect_images")
+                temp_incorrect_dir = root_inner.replace(data_folder, os.path.join(outfolder, "saved_orig_images"))
                 if not os.path.exists(temp_incorrect_dir):
                     os.makedirs(temp_incorrect_dir)
                 temp_file_name = os.path.join(temp_incorrect_dir, file_name)
                 copyfile(orig_file, temp_file_name)
 
                 wrong_file += 1
-                print(orig_file)
-
+                print(page.decode("UTF-8") + ": " + orig_file)
+                inc_files.write(orig_file + "," + page.decode("UTF-8") + "\n")
+    inc_files.close()
     '''
     # Find files with bad ending
     # This approach does not seem to work as file might not end with 0xffd9 and tensorflow has no problems opening them.
@@ -152,13 +154,16 @@ def write_dict_to_csv(data_set_stats, data_stats_folder, stat_filename, col_keys
 
 if __name__ == "__main__":
     data_folder_loc = os.path.join("D:\\PhotoOrientation", "SUN397", "images")
+    outfolder = os.path.join("D:", os.sep, "PhotoOrientation", "SUN397", "fixes")
+
+    '''
     image_nums = find_num_images_by_tag(data_folder_loc,
                                         os.path.join(os.path.split(data_folder_loc)[0], "ClassName.txt"))
     for tag in image_nums:
         print(tag + ": " + str(image_nums[tag]))
     write_dict_to_csv(image_nums, os.path.join(os.path.split(data_folder_loc)[0], "stats"), "data_info",
                       col_keys=["Num Images"])
-
+    '''
     # copy_incorrect(data_folder, data_folder)
-    # convert_files_to_jpeg(data_folder_loc)
+    convert_files_to_jpeg(data_folder_loc, outfolder)
 
