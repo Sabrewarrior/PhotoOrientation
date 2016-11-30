@@ -70,7 +70,6 @@ def convert_files_to_jpeg(data_folder):
     count = 0
     wrong_file = 0
 
-
     # Find files with incorrect starting
     for root_inner, dir_inner, files in os.walk(data_folder):
         for file_name in files:
@@ -81,13 +80,13 @@ def convert_files_to_jpeg(data_folder):
             count += 1
             print(page)
             if page != b'ffd8':
-                # image = imread(org_file)
+                image = imread(orig_file)
 
-                # temp_fixed_dir = root_inner.replace("images", "fixed_images")
-                # if not os.path.exists(temp_fixed_dir):
-                #     os.makedirs(temp_fixed_dir)
-                # temp_file = os.path.join(temp_fixed_dir, file_name)
-                # imsave(os.path.join(temp_file), image, format='JPEG')
+                temp_fixed_dir = root_inner.replace("images", "fixed_images")
+                if not os.path.exists(temp_fixed_dir):
+                    os.makedirs(temp_fixed_dir)
+                temp_file = os.path.join(temp_fixed_dir, file_name)
+                imsave(os.path.join(temp_file), image, format='JPEG')
 
                 temp_incorrect_dir = root_inner.replace("images", "saved_incorrect_images")
                 if not os.path.exists(temp_incorrect_dir):
@@ -100,6 +99,8 @@ def convert_files_to_jpeg(data_folder):
 
     '''
     # Find files with bad ending
+    # This approach does not seem to work as file might not end with 0xffd9 and tensorflow has no problems opening them.
+    # Best would be to use tensorflow itself to find out which files it has problems opening.
     for root_inner, dir_inner, files in os.walk(data_folder):
         for file_name in files:
             orig_file = os.path.join(root_inner, file_name)
