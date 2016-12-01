@@ -503,17 +503,33 @@ def hog_batch(input_folder, out_folder, image_folder_depth=3, label="hog"):
         print(count)
     pickle.dump(corrupted, open(os.path.join(out_folder, "invalid_hog.log"), "wb"))
 
+
+def test_create_labeled_image_list1(data_folder, data_set, feature):
+    a, b, c = create_labeled_image_list(data_folder, data_set=data_set, feature=feature, num_images=None,
+                                        labeled_data=True)
+    for i in range(len(a)):
+        print(a[i], b[i], c[i])
+    print("Total: " + str(len(a)))
+
+
+def test_create_labeled_image_list2(data_folder, data_set, feature):
+    a, b, c = create_labeled_image_list(data_folder, data_set=data_set, feature=feature, num_images=None,
+                                        labeled_data=False)
+    for i in range(len(a)):
+        print(a[i], b[i], c[i])
+    print("Total: " + str(len(a)))
+
+
+def run_tests():
+    test_create_labeled_image_list1("~/Documents", "sun397", "images")
+    test_create_labeled_image_list1("~/Documents", "sun397", "images1")
+
+
 if __name__ == "__main__":
     t = int(time.time())
     # t = 1454219613
     print("t=", t)
     # hog_batch("/home/ujash/nvme/data2","/home/ujash/nvme/data2", label="hog2")
     # resize_batch("/home/ujash/images_flickr/down1","/home/ujash/images_flickr/down4")
-    data_loc = "~/Documents"
-
-    a, b, c = create_labeled_image_list(data_loc, data_set="sun397", feature="images1", num_images=None,
-                                        labeled_data=True)
-    for i in range(len(a)):
-        print(a[i], b[i], c[i])
-    print("Total: " + str(len(a)))
     # handler("/home/ujash/nvme/down4","/home/ujash/nvme/data2")
+    run_tests()
