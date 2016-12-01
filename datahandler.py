@@ -81,7 +81,7 @@ def input_pipeline(directory, batch_size, data_set="train", feature="images", bi
 
 def convert_binary_to_array(image_binary_list):
     images = []
-    #print(image_binary_list)
+    # print(image_binary_list)
     for image_binary in image_binary_list:
         images.append(pickle.loads(image_binary))
     return images
@@ -89,7 +89,7 @@ def convert_binary_to_array(image_binary_list):
 
 def convert_to_array(image_list):
     images = []
-    #print(image_binary_list)
+    # print(image_binary_list)
     for image in image_list:
         images.append(imread(image))
     return images
@@ -99,10 +99,11 @@ def create_labeled_image_list(directory, data_set=None, feature="images", num_im
     image_list = []
     label_list = []
     tags_list = []
-    if data_set:
+    if data_set is not None:
         directory = os.path.join(directory, data_set)
     if feature:
         directory = os.path.join(directory, feature)
+    directory = os.path.normpath(os.path.expandvars(os.path.expanduser(directory)))
     if not os.path.exists(directory):
         print("Feature or data set does not exist")
         print(directory)
@@ -126,7 +127,7 @@ def create_labeled_image_list(directory, data_set=None, feature="images", num_im
                 else:
                     label = 3
                 temp_images, temp_labels, temp_tags, num_images_found = \
-                    create_labeled_image_list_helper(root, label=label, limit=num_images)
+                    create_labeled_image_list_helper(os.path.join(root, dirname), label=label, limit=num_images)
                 if num_images:
                     num_images -= num_images_found
                 image_list.extend(temp_images)
@@ -143,24 +144,24 @@ def create_labeled_image_list_helper(directory, label=None, limit=None):
     label_list = []
     tags_list = []
     num_images = 0
+    # Make sure we are working with absolute paths and not relative ones, otherwise .replace() will not work
+    directory = os.path.normpath(os.path.expandvars(os.path.expanduser(directory)))
     for root, dirnames, filenames in os.walk(os.path.join(directory)):
         for filename in filenames:
             if limit is not None:
-                if limit == num_images:
+                if limit <= num_images:
                     break
             tags = filename
-            res = os.path.split(root)
-            while res[0] != directory:
-                tags = os.path.join(res[1], tags)
-                res = os.path.split(res[0])
-            if label:  # If image has a label, get the directory of the label
-                tags = os.path.join(res[1], tags)
+            res = root.replace(directory + os.path.sep, "")
+            tags = os.path.join(res, tags)
+            if label is not None:  # If image has a label, get the directory of the label
+                tags = os.path.join(os.path.basename(directory), tags)
                 label_list.append(label)
                 image_list.append(os.path.join(root, filename))
                 tags_list.append(tags)
                 num_images += 1
             else:
-                tags = [os.path.join(res[1], tags)]*4
+                tags = [tags]*4
                 label_list.extend([0, 1, 2, 3])
                 image_list.extend([os.path.join(root, filename)]*4)
                 tags_list.extend(tags)
@@ -508,5 +509,11 @@ if __name__ == "__main__":
     print("t=", t)
     # hog_batch("/home/ujash/nvme/data2","/home/ujash/nvme/data2", label="hog2")
     # resize_batch("/home/ujash/images_flickr/down1","/home/ujash/images_flickr/down4")
+    data_loc = "~/Documents"
 
+    a, b, c = create_labeled_image_list(data_loc, data_set="sun397", feature="images1", num_images=None,
+                                        labeled_data=True)
+    for i in range(len(a)):
+        print(a[i], b[i], c[i])
+    print("Total: " + str(len(a)))
     # handler("/home/ujash/nvme/down4","/home/ujash/nvme/data2")
