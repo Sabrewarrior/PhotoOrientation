@@ -35,15 +35,22 @@ def find_num_images_by_tag(data_folder, class_names_file=None):
     return num_images_by_tag
 
 
-def copy_incorrect(in_folder, out_folder):
-    f = open(os.path.join(in_folder, "stats", "snapshotVGG1-5-test.txt"), "r")
+def copy_incorrect(in_folder, out_folder, incorrect_files="snapshotVGG1-5-test.txt"):
+    print(incorrect_files)
+    if os.path.exists(incorrect_files):
+        f = open(incorrect_files, "r")
+        print("File found")
+    else:
+        f = open(os.path.join(in_folder, "stats", incorrect_files), "r")
     page = f.read()
 
     sources = page.split('\n')
+    print(sources)
     print(len(sources))
     count = 0
     for source in sources:
         if source.find("jpg") >= 0:
+            print(source)
             count += 1
             res, filename = os.path.split(source)
             res, layout = os.path.split(res)
@@ -71,7 +78,7 @@ def convert_files_to_jpeg(data_folder, outfolder):
     wrong_file = 0
     if not os.path.exists(outfolder):
         os.makedirs(outfolder)
-    inc_files = open(os.path.join(outfolder,"not_jpg_files.txt"),"w")
+    inc_files = open(os.path.join(outfolder, "not_jpg_files.txt"), "w")
     # Find files with incorrect starting
     for root_inner, dir_inner, files in os.walk(data_folder):
         for file_name in files:
@@ -82,14 +89,16 @@ def convert_files_to_jpeg(data_folder, outfolder):
             count += 1
             # print(page)
             if page != b'ffd8':
+                print("No")
+            else:
                 image = imread(orig_file)
-                temp_fixed_dir = root_inner.replace(data_folder, os.path.join(outfolder, "converted_images"))
+                temp_fixed_dir = root_inner.replace(data_folder, os.path.join(outfolder, "converted_images1"))
                 if not os.path.exists(temp_fixed_dir):
                     os.makedirs(temp_fixed_dir)
                 temp_file_name = os.path.join(temp_fixed_dir, file_name)
                 imsave(os.path.join(temp_file_name), image, format='JPEG')
 
-                temp_incorrect_dir = root_inner.replace(data_folder, os.path.join(outfolder, "saved_orig_images"))
+                temp_incorrect_dir = root_inner.replace(data_folder, os.path.join(outfolder, "saved_orig_images1"))
                 if not os.path.exists(temp_incorrect_dir):
                     os.makedirs(temp_incorrect_dir)
                 temp_file_name = os.path.join(temp_incorrect_dir, file_name)
@@ -152,9 +161,28 @@ def write_dict_to_csv(data_set_stats, data_stats_folder, stat_filename, col_keys
             writer.writerow(row_list)
 
 
+def find_corrupt_in_log(logfile):
+    print_next = False
+    count = 0
+    with open(logfile, "r") as f:
+        for line in f:
+            if print_next and line.find("jpg") > 0:
+                count += 1
+                print(os.path.join("D:\\PhotoOrientation\\SUN397\\images\\", line),end='')
+                print_next = False
+            if line.find("Corrupt") >= 0:
+                print_next = True
+
+
 if __name__ == "__main__":
-    data_folder_loc = os.path.join("D:\\PhotoOrientation", "SUN397", "images")
+    data_folder_loc = os.path.join("D:\\PhotoOrientation", "SUN397", "incorrect")
     outfolder = os.path.join("D:", os.sep, "PhotoOrientation", "SUN397", "fixes")
+
+    '''
+    find_corrupt_in_log("C:\PhotoOrientation\data\SUN397\Logs\log_errors.txt")
+    copy_incorrect("D:\\PhotoOrientation\\SUN397", "D:\\PhotoOrientation\\SUN397",
+                   "C:\\PhotoOrientation\\data\\SUN397\\Logs\\incorrect_endings.txt")
+    '''
 
     '''
     image_nums = find_num_images_by_tag(data_folder_loc,
@@ -165,5 +193,7 @@ if __name__ == "__main__":
                       col_keys=["Num Images"])
     '''
     # copy_incorrect(data_folder, data_folder)
-    convert_files_to_jpeg(data_folder_loc, outfolder)
+    # convert_files_to_jpeg(data_folder_loc, outfolder)
 
+        # print("err")
+    # print(count)

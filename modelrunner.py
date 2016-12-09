@@ -263,14 +263,14 @@ if __name__ == "__main__":
     read_func = dummy_reader
     feature_type = "images"
 
-    data_folder_loc = os.path.join("C:", os.sep, "PhotoOrientation", "SUNdatabase")
+    data_folder_loc = os.path.join("D:", os.sep, "PhotoOrientation", "SUN397")
     print(data_folder_loc)
     globalStep = tf.Variable(0, name='global_step', trainable=False)
     ses = tf.Session()  # config=tf.ConfigProto(log_device_placement=True))
 
     vgg = True
-    load_snapshot_filename = "C:\\PhotoOrientation\\data2\\snapshotVGG1\\5.pkl"
-    snapshot_save_folder = "C:\\PhotoOrientation\\data2\\snapshotVGG2"
+    load_snapshot_filename = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG1\\5.pkl"
+    snapshot_save_folder = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG2"
     if vgg:
         batch_size = 25
         max_parallel_acc_calcs = 50

@@ -31,7 +31,7 @@ def read_file_format(filename_queue, binary_file=False, rot_to_label=False):
     if binary_file:
         image = tf.read_file(filename_queue[0])
     else:
-        tf.Print(filename_queue[0], [filename_queue[0]])
+        tf.Print(filename_queue[0], [filename_queue[1]])
         tensor_image = tf.read_file(filename_queue[0])
 
         image = tf.image.decode_jpeg(tensor_image, channels=3)
@@ -43,15 +43,17 @@ def read_file_format(filename_queue, binary_file=False, rot_to_label=False):
     return image, label, tags
 
 
-def input_pipeline(directory, batch_size, data_set="train", feature="images", binary_file=False, num_epochs=None,
-                   num_images=None, labeled_data=False, rand_seed=None):
+def input_pipeline(directory, batch_size, data_set="train", feature="images", orientations=None,
+                   binary_file=False, num_epochs=None, num_images=None, labeled_data=False, rand_seed=None,
+                   num_threads=10):
     with tf.name_scope('InputPipeline'):
         # Reads paths of images together with their labels
         if not rand_seed:
             rand_seed = int(time.time())
 
         image_list, label_list, tags_list = create_labeled_image_list(directory, data_set=data_set, feature=feature,
-                                                                      num_images=num_images, labeled_data=labeled_data)
+                                                                      orientations=orientations, num_images=num_images,
+                                                                      labeled_data=labeled_data)
         input_queue = tf.train.slice_input_producer([image_list, tags_list, label_list], num_epochs=num_epochs)
 
         # Makes an input queue
@@ -70,11 +72,11 @@ def input_pipeline(directory, batch_size, data_set="train", feature="images", bi
             image_batch, label_batch, tags_batch = tf.train.shuffle_batch([image, label, tags], batch_size=batch_size,
                                                                           capacity=capacity,
                                                                           min_after_dequeue=min_after_dequeue,
-                                                                          num_threads=10, seed=rand_seed)
+                                                                          num_threads=num_threads, seed=rand_seed)
         else:
             print("Batching")
             image_batch, label_batch, tags_batch = tf.train.batch([image, label, tags], batch_size=batch_size,
-                                                                  capacity=capacity, num_threads=10)
+                                                                  capacity=capacity, num_threads=num_threads)
             print("Finished batching")
         return image_batch, label_batch, tags_batch
 
@@ -95,13 +97,16 @@ def convert_to_array(image_list):
     return images
 
 
-def create_labeled_image_list(directory, data_set=None, feature="images", num_images=None, labeled_data=False):
+def create_labeled_image_list(directory, data_set=None, feature="images",
+                              orientations=None, num_images=None, labeled_data=False):
+    if orientations is None:
+        orientations = [0, 90, 180, 270]
     image_list = []
     label_list = []
     tags_list = []
     if data_set is not None:
         directory = os.path.join(directory, data_set)
-    if feature:
+    if feature is not None:
         directory = os.path.join(directory, feature)
     directory = os.path.normpath(os.path.expandvars(os.path.expanduser(directory)))
     if not os.path.exists(directory):
@@ -110,36 +115,32 @@ def create_labeled_image_list(directory, data_set=None, feature="images", num_im
     for root, dirnames, filenames in os.walk(directory):
         print("Loading images from: " + root)
         if not labeled_data:
-            temp_images, temp_labels, temp_tags, num_images_found = \
-                create_labeled_image_list_helper(root, limit=num_images)
-            image_list.extend(temp_images)
-            label_list.extend(temp_labels)
-            tags_list.extend(temp_tags)
-            break
-        else:
-            for dirname in dirnames:
-                if dirname == '0':
-                    label = 0
-                elif dirname == '90':
-                    label = 1
-                elif dirname == '180':
-                    label = 2
-                else:
-                    label = 3
+            for orientation in orientations:
                 temp_images, temp_labels, temp_tags, num_images_found = \
-                    create_labeled_image_list_helper(os.path.join(root, dirname), label=label, limit=num_images)
-                if num_images:
-                    num_images -= num_images_found
+                    create_labeled_image_list_helper(root, label=orientation/90, labeled_data=labeled_data,
+                                                     limit=num_images)
                 image_list.extend(temp_images)
                 label_list.extend(temp_labels)
                 tags_list.extend(temp_tags)
+        else:
+            for dirname in dirnames:
+                if int(dirname) in orientations:
+                    label = int(dirname)/90
+                    temp_images, temp_labels, temp_tags, num_images_found = \
+                        create_labeled_image_list_helper(os.path.join(root, dirname), label=label,
+                                                         labeled_data=labeled_data, limit=num_images)
+                    if num_images:
+                        num_images -= num_images_found
+                    image_list.extend(temp_images)
+                    label_list.extend(temp_labels)
+                    tags_list.extend(temp_tags)
         break  # Only checking the orientation directories here
 
     print(str(len(image_list)) + " images loaded")
     return image_list, label_list, tags_list
 
 
-def create_labeled_image_list_helper(directory, label=None, limit=None):
+def create_labeled_image_list_helper(directory, label=None, labeled_data=False, limit=None):
     image_list = []
     label_list = []
     tags_list = []
@@ -154,18 +155,12 @@ def create_labeled_image_list_helper(directory, label=None, limit=None):
             tags = filename
             res = root.replace(directory + os.path.sep, "")
             tags = os.path.join(res, tags)
-            if label is not None:  # If image has a label, get the directory of the label
+            if labeled_data:  # If image has a label, get the directory of the label
                 tags = os.path.join(os.path.basename(directory), tags)
-                label_list.append(label)
-                image_list.append(os.path.join(root, filename))
-                tags_list.append(tags)
-                num_images += 1
-            else:
-                tags = [tags]*4
-                label_list.extend([0, 1, 2, 3])
-                image_list.extend([os.path.join(root, filename)]*4)
-                tags_list.extend(tags)
-                num_images += 4
+            label_list.append(label)
+            image_list.append(os.path.join(root, filename))
+            tags_list.append(tags)
+            num_images += 1
     return image_list, label_list, tags_list, num_images
 
 
@@ -520,10 +515,56 @@ def test_create_labeled_image_list2(data_folder, data_set, feature):
     print("Total: " + str(len(a)))
 
 
-def run_tests():
-    test_create_labeled_image_list1("~/Documents", "sun397", "images")
-    test_create_labeled_image_list1("~/Documents", "sun397", "images1")
+def open_single_file_with_tf(filename):
+    with tf.device("/cpu:0"):
+        sess = tf.Session()
+        tf_file = tf.constant(filename, dtype=tf.string)
+        tf_image = tf.read_file(tf_file)
+        image = tf.image.decode_jpeg(tf_image, channels=3)
+        image.eval(session=sess)
 
+
+def test_each_file_with_tf(log_filename):
+    # from contextlib import redirect_stderr, redirect_stdout
+
+    with tf.device("/cpu:0"):
+        sess = tf.Session()
+        images, labels, tags = input_pipeline("D:\\PhotoOrientation", 1, data_set="SUN397", feature="images",
+                                              orientations=[0], binary_file=False, num_epochs=1,
+                                              num_images=None, labeled_data=False, rand_seed=None, num_threads=1)
+        init_ops = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
+
+        sess.run(init_ops)
+        coord = tf.train.Coordinator()
+        threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+        steps = 0
+        try:
+            while not coord.should_stop():
+                print(steps)
+                imgs_list, labels_list, tags_list = sess.run([images, labels, tags])
+                if len(tags_list) > 0:
+                    print(tags_list[0].decode("UTF-8"))
+                steps += 1
+        except tf.errors.OutOfRangeError:
+            print('Finished checking -- epoch limit reached')
+        finally:
+            coord.request_stop()
+        coord.join(threads=threads)
+
+
+def run_tests():
+    for root, dirs, files in os.walk("D:\\PhotoOrientation\\SUN397\\fixes\\converted_images1"):
+        for filename in files:
+            open_single_file_with_tf(filename=os.path.join(root,filename))
+    # test_create_labeled_image_list1("D:\\PhotoOrientation", "sun397", "images")
+    # test_create_labeled_image_list1("D:\\PhotoOrientation", "sun397", "images1")
+
+    # with open("C:\\PhotoOrientation\\data\\SUN397\\Logs\\incorrect_endings.txt", 'r') as f:
+    #    for line in f:
+    #        filename = line.replace('\n', '')
+    #        open_single_file_with_tf(filename)
+
+    # test_each_file_with_tf("D:\\PhotoOrientation\\SUN397\\err_log.txt")
 
 if __name__ == "__main__":
     t = int(time.time())
