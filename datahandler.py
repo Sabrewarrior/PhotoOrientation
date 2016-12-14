@@ -48,15 +48,22 @@ def read_file_format(filename_queue, binary_file=False, rot_to_label=False):
 
 def input_pipeline(directory, batch_size, data_set="train", feature="images", orientations=None,
                    binary_file=False, num_epochs=None, num_images=None, labeled_data=False, rand_seed=None,
-                   num_threads=10):
+                   num_threads=10, from_file=False):
     with tf.name_scope('InputPipeline'):
         # Reads paths of images together with their labels
         if not rand_seed:
             rand_seed = int(time.time())
-
-        image_list, label_list, tags_list = create_labeled_image_list(directory, data_set=data_set, feature=feature,
-                                                                      orientations=orientations, num_images=num_images,
-                                                                      labeled_data=labeled_data)
+        if from_file:
+            image_list, label_list, tags_list = create_labeled_image_list_from_file(directory, data_set=data_set,
+                                                                                    feature=feature,
+                                                                                    orientations=orientations,
+                                                                                    num_images=num_images,
+                                                                                    labeled_data=labeled_data)
+        else:
+            image_list, label_list, tags_list = create_labeled_image_list(directory, data_set=data_set, feature=feature,
+                                                                          orientations=orientations,
+                                                                          num_images=num_images,
+                                                                          labeled_data=labeled_data)
         input_queue = tf.train.slice_input_producer([image_list, tags_list, label_list], num_epochs=num_epochs)
 
         # Makes an input queue
@@ -98,6 +105,34 @@ def convert_to_array(image_list):
     for image in image_list:
         images.append(imread(image))
     return images
+
+
+def create_labeled_image_list_from_file(directory, data_set, feature="images", orientations=None, num_images=None,
+                                        labeled_data=False):
+    if orientations is None:
+        orientations = [0, 90, 180, 270]
+    image_list = []
+    label_list = []
+    tags_list = []
+    if feature is not None:
+        directory = os.path.join(directory, feature)
+
+    for orientation in orientations:
+        if labeled_data:
+            filename = os.path.join(directory, str(orientation), data_set + ".txt")
+        else:
+            filename = os.path.join(directory, data_set + ".txt")
+        with open(filename, 'r') as f:
+            temp_list = f.readlines()
+            if num_images is not None:
+                if num_images > len(temp_list):
+                    temp_list = temp_list[:num_images]
+                num_images -= len(temp_list)
+            temp_label_list = [orientation/90]*len(temp_list)
+        image_list.extend(temp_list)
+        tags_list.extend(temp_list)
+        label_list.extend(temp_label_list)
+    return image_list, label_list, tags_list
 
 
 def create_labeled_image_list(directory, data_set=None, feature="images",
