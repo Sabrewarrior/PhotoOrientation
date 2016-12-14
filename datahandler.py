@@ -11,8 +11,6 @@ import pickle
 from skimage.transform import rotate
 from PIL import Image
 import tensorflow as tf
-
-
 '''
 def read_my_file_format(filename_queue):
     reader = tf.WholeFileReader()
@@ -36,10 +34,15 @@ def read_file_format(filename_queue, binary_file=False, rot_to_label=False):
 
         image = tf.image.decode_jpeg(tensor_image, channels=3)
 
+        multiplier = tf.div(tf.constant(224, tf.float32),
+                            tf.cast(tf.maximum(tf.shape(image)[0], tf.shape(image)[1]), tf.float32))
+        x = tf.cast(tf.round(tf.mul(tf.cast(tf.shape(image)[0], tf.float32), multiplier)), tf.int32)
+        y = tf.cast(tf.round(tf.mul(tf.cast(tf.shape(image)[1], tf.float32), multiplier)), tf.int32)
+        image = tf.image.resize_images(image, [x, y])
+        image = tf.image.resize_image_with_crop_or_pad(image, 224, 224)
+
         if rot_to_label:
             image = tf.image.rot90(image, k=label)
-
-        image = tf.image.resize_images(image, [224, 224])
     return image, label, tags
 
 
@@ -499,6 +502,28 @@ def hog_batch(input_folder, out_folder, image_folder_depth=3, label="hog"):
     pickle.dump(corrupted, open(os.path.join(out_folder, "invalid_hog.log"), "wb"))
 
 
+def split_SUN397(data_loc, out_folder):
+    data_loc = os.path.normpath(os.path.expandvars(os.path.expanduser(data_loc)))
+    print(data_loc)
+    test_set = []
+    train_set = []
+    valid_set = []
+    count = 0
+    for root, dirnames, filenames in os.walk(data_loc):
+        # print(root)
+        if len(dirnames) == 0:
+            filenames = [os.path.join(root, x) for x in filenames]
+            count += len(filenames)
+            shuffle(filenames)
+            test_set.extend(filenames[:len(filenames)//5])
+            temp_set = filenames[len(filenames)//5:]
+            valid_set.extend(temp_set[:len(temp_set)//5])
+            train_set.extend(temp_set[len(temp_set)//5:])
+
+    print(len(valid_set), len(test_set), len(train_set))
+    print(count)
+
+
 def test_create_labeled_image_list1(data_folder, data_set, feature):
     a, b, c = create_labeled_image_list(data_folder, data_set=data_set, feature=feature, num_images=None,
                                         labeled_data=True)
@@ -515,7 +540,7 @@ def test_create_labeled_image_list2(data_folder, data_set, feature):
     print("Total: " + str(len(a)))
 
 
-def open_single_file_with_tf(filename):
+def test_open_single_file_with_tf(filename):
     with tf.device("/cpu:0"):
         sess = tf.Session()
         tf_file = tf.constant(filename, dtype=tf.string)
@@ -552,19 +577,87 @@ def test_each_file_with_tf(log_filename):
         coord.join(threads=threads)
 
 
+def test_read_file_format(data_loc):
+    image_list = []
+    data_loc = os.path.normpath(os.path.expandvars(os.path.expanduser(data_loc)))
+    print(data_loc)
+    print(os.listdir(data_loc))
+    for filename in os.listdir(data_loc):
+        if os.path.isfile(os.path.join(data_loc, filename)) and filename.count(".jpg") > 0:
+            image_list.append(os.path.join(data_loc, filename))
+    from scipy.misc import imsave, imshow, imrotate, imread, imresize
+    import vgg16
+    import numpy as np
+    sess = tf.Session()
+    batch_size = 1
+    imgs = tf.placeholder(tf.float32, shape=(None, 224, 224, 3), name="Inputs")
+    y_ = tf.placeholder(tf.int32, shape=(batch_size), name="Outputs")
+    learning_rate = .0001
+    globalStep = tf.Variable(0, name='global_step', trainable=False)
+
+    snapshot = "~/Downloads/5.pkl"
+    snapshot = os.path.normpath(os.path.expandvars(os.path.expanduser(snapshot)))
+    M = np.load(snapshot)
+    vgg = vgg16.VGG16(imgs, y_, learning_rate, max_pool_num=5, global_step=globalStep, snapshot=M)
+
+    init = tf.initialize_all_variables()
+    sess.run(init)
+    #image_file = tf.placeholder(tf.string)
+    #tensor_image = tf.read_file(image_file)
+    #image = tf.image.decode_jpeg(tensor_image, channels=3)
+    #image = tf.image.resize_images(image, [224, 224])
+
+    for images in image_list:
+        # image = tf.image.rot90(image, k=1)
+        # multiplier = tf.div(tf.constant(224, tf.float32),
+        #                     tf.cast(tf.maximum(tf.shape(image)[0], tf.shape(image)[1]), tf.float32))
+        # x = tf.cast(tf.round(tf.mul(tf.cast(tf.shape(image)[0], tf.float32), multiplier)), tf.int32)
+        # y = tf.cast(tf.round(tf.mul(tf.cast(tf.shape(image)[1], tf.float32), multiplier)), tf.int32)
+         #, method=tf.image.ResizeMethod.BICUBIC)
+        #im = sess.run(image, feed_dict={image_file: images})
+        print(images)
+        im = imread(images)
+        im = imresize(im, (224, 224))
+        probs = sess.run(vgg.probs, feed_dict={vgg.inputs: [im], vgg.keep_probs: 1})[0]
+        # image = tf.image.resize_images(image, [224, 224])
+        #
+        # print(x.eval(session=sess))
+        # print(y.eval(session=sess))
+        # image = tf.image.resize_image_with_crop_or_pad(image, 224, 224)
+        print(probs)
+        x = 90*np.argmax(probs)
+        print(x)
+        imsave(data_loc + "/rotation1/" + str(x) + "-" + os.path.split(images)[1], imrotate(im, int(x)), "JPEG")
+        #
+        # imsave(data_loc + "/resized.jpg", image, format='JPEG')
+        # os.execl(data_loc, "open resized.jpg")
+
+        # imshow(im)
+
+    sess.close()
+
+
 def run_tests():
-    for root, dirs, files in os.walk("D:\\PhotoOrientation\\SUN397\\fixes\\converted_images1"):
-        for filename in files:
-            open_single_file_with_tf(filename=os.path.join(root,filename))
+    data_loc = "D:\\PhotoOrientation\\SUN397\\images"
+    outfolder = "D:\\PhotoOrientation\\SUN397\\sets1"
+    # for root, dirs, files in os.walk("D:\\PhotoOrientation\\SUN397\\fixes\\converted_images1"):
+    #     for filename in files:
+    #         test_open_single_file_with_tf(filename=os.path.join(root,filename))
     # test_create_labeled_image_list1("D:\\PhotoOrientation", "sun397", "images")
     # test_create_labeled_image_list1("D:\\PhotoOrientation", "sun397", "images1")
 
     # with open("C:\\PhotoOrientation\\data\\SUN397\\Logs\\incorrect_endings.txt", 'r') as f:
     #    for line in f:
     #        filename = line.replace('\n', '')
-    #        open_single_file_with_tf(filename)
+    #        test_open_single_file_with_tf(filename)
 
     # test_each_file_with_tf("D:\\PhotoOrientation\\SUN397\\err_log.txt")
+    split_SUN397(data_loc, outfolder)
+
+
+def run_tests_mac():
+    # split_SUN397("~/Documents/SUN397/images", "")
+    test_read_file_format("~/Documents")
 
 if __name__ == "__main__":
     t = int(time.time())
@@ -574,3 +667,4 @@ if __name__ == "__main__":
     # resize_batch("/home/ujash/images_flickr/down1","/home/ujash/images_flickr/down4")
     # handler("/home/ujash/nvme/down4","/home/ujash/nvme/data2")
     run_tests()
+    # run_tests_mac()

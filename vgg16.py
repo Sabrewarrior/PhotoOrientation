@@ -5,7 +5,7 @@
 # Details:                                                                             #
 # https://github.com/Sabrewarrior/photoorientationblob/master/vgg16.py                 #
 # http://www.cs.toronto.edu/~frossard/post/vgg16/                                      #
-#                                                                                      #
+#                          simon frazer, guelph                                        #
 # Model from https://gist.github.com/ksimonyan/211839e770f7b538e2d8#file-readme-md     #
 # Weights from Caffe converted using https://github.com/ethereon/caffe-tensorflow      #
 ########################################################################################
@@ -28,7 +28,7 @@ class VGG16:
         self.tensors = {}
         self.global_step = global_step
         self.learning_rate = learning_rate
-        self.keep_probs = tf.Variable(0.75, name='keep_probs', trainable=False, dtype=tf.float32)
+        self.keep_probs = tf.Variable(1, name='keep_probs', trainable=False, dtype=tf.float32)
         if guided_grad:
             @ops.RegisterGradient("GuidedRelu")
             def _guided_relu_grad(op, grad):
@@ -41,19 +41,12 @@ class VGG16:
         else:
             last_pool_name = self.create_conv_layers(snapshot, max_pool_num)
             self.outputs = self.fc_layers(last_pool_name, snapshot)
+        self.probs = tf.nn.softmax(self.outputs)
+        # self.correct_predictions = tf.equal(tf.argmax(self.probs, 1), tf.to_int64(self.testy))
+        # with tf.name_scope("Accuracy"):
+        #     self.acc = tf.reduce_mean(tf.cast(self.correct_predictions, tf.float32))
 
-        self.train_step = self.training()
-        self.acc = self.accuracy()
-
-    def probability(self):
-        return tf.nn.softmax(self.outputs)
-
-    def correct_predictions(self):
-        return tf.equal(tf.argmax(self.probability(), 1), tf.to_int64(self.testy))
-
-    def accuracy(self):
-        with tf.name_scope("Accuracy"):
-            return tf.reduce_mean(tf.cast(self.correct_predictions(), tf.float32))
+        # self.train_step = self.training()
 
     def training(self):
         with tf.name_scope("Training"):
@@ -81,7 +74,7 @@ class VGG16:
                 conv = tf.nn.conv2d(self.tensors[input_name], self.parameters[cur_conv+"_W"],
                                     conv_stride, padding='SAME')
                 out = tf.nn.bias_add(conv, self.parameters[cur_conv+"_b"])
-                self.tensors.update({cur_conv: tf.nn.relu(out, name="activation_"+ str(conv_num))})
+                self.tensors.update({cur_conv: tf.nn.relu(out, name="activation_" + str(conv_num))})
                 input_name = cur_conv
 
             return tf.nn.max_pool(self.tensors[input_name], ksize=pool_ksize, strides=pool_ksize, padding='SAME', name='pool')
@@ -136,7 +129,7 @@ class VGG16:
             self.parameters.update({"fc6_W": tf.Variable(wl, trainable=True, name='weights')})
             self.parameters.update({"fc6_b": tf.Variable(bl, trainable=True, name='biases')})
             fc6l = tf.nn.bias_add(tf.matmul(final_pool_flat, self.parameters['fc6_W']), self.parameters['fc6_b'])
-            self.tensors.update({'fc6': tf.nn.dropout(tf.nn.relu(fc6l, name="activation"),self.keep_probs)})
+            self.tensors.update({'fc6': tf.nn.dropout(tf.nn.relu(fc6l, name="activation"), self.keep_probs)})
 
         # fc7
         with tf.name_scope('fc7') as scope:
@@ -151,7 +144,7 @@ class VGG16:
             self.parameters.update({"fc7_b": tf.Variable(bl, trainable=True, name='biases')})
 
             fc7l = tf.nn.bias_add(tf.matmul(self.tensors['fc6'], self.parameters['fc7_W']), self.parameters['fc7_b'])
-            self.tensors.update({'fc7': tf.nn.dropout(tf.nn.relu(fc7l, name="activation"),self.keep_probs)})
+            self.tensors.update({'fc7': tf.nn.dropout(tf.nn.relu(fc7l, name="activation"), self.keep_probs)})
 
         # fc8
         with tf.name_scope('fc8') as scope:
@@ -179,7 +172,7 @@ if __name__ == '__main__':
         y_ = tf.placeholder(tf.int32,shape=(batchSize), name="Outputs")
         learning_rate = .0001
         M = np.load('vgg16_weights.npz')
-        vgg = VGG16(imgs, y_, learning_rate, max_pool_num=4, global_step=globalStep, snapshot=M)
+        vgg = VGG16(imgs, y_, learning_rate, max_pool_num=5, global_step=globalStep, snapshot=M)
         init = tf.initialize_all_variables()
         sess.run(init)
 
