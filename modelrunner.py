@@ -164,7 +164,7 @@ def parallel_acc_by_tags(model, sess, max_parallel_calcs, data_folder, data_set=
             steps += 1
             raw_imgs_list, labels_list, tags_list = sess.run([images, labels, tags])
             imgs_list = read_func(raw_imgs_list)
-            preds = sess.run(model.correct_predictions(), feed_dict={model.inputs: imgs_list, model.testy: labels_list,
+            preds = sess.run(model.correct_predictions, feed_dict={model.inputs: imgs_list, model.testy: labels_list,
                                                                      model.keep_probs: 1})
             total_images += len(preds)
             incorrect_indices = np.where(preds == 0)

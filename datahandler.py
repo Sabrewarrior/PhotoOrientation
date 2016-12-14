@@ -502,13 +502,19 @@ def hog_batch(input_folder, out_folder, image_folder_depth=3, label="hog"):
     pickle.dump(corrupted, open(os.path.join(out_folder, "invalid_hog.log"), "wb"))
 
 
-def split_SUN397(data_loc, out_folder):
+def split_SUN397(data_loc, out_folder, overwrite=False):
     data_loc = os.path.normpath(os.path.expandvars(os.path.expanduser(data_loc)))
     print(data_loc)
     test_set = []
     train_set = []
     valid_set = []
     count = 0
+    if not os.path.exists(out_folder):
+        os.makedirs(out_folder)
+    else:
+        if not overwrite:
+            print("File already exists")
+            return
     for root, dirnames, filenames in os.walk(data_loc):
         # print(root)
         if len(dirnames) == 0:
@@ -519,7 +525,15 @@ def split_SUN397(data_loc, out_folder):
             temp_set = filenames[len(filenames)//5:]
             valid_set.extend(temp_set[:len(temp_set)//5])
             train_set.extend(temp_set[len(temp_set)//5:])
-
+    with open(os.path.join(out_folder, "valid.txt"), "w") as f:
+        for filename in valid_set:
+            f.write(filename)
+    with open(os.path.join(out_folder, "test.txt"), "w") as f:
+        for filename in test_set:
+            f.write(filename)
+    with open(os.path.join(out_folder, "train.txt"), "w") as f:
+        for filename in train_set:
+            f.write(filename)
     print(len(valid_set), len(test_set), len(train_set))
     print(count)
 
