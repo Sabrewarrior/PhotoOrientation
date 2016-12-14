@@ -42,11 +42,11 @@ class VGG16:
             last_pool_name = self.create_conv_layers(snapshot, max_pool_num)
             self.outputs = self.fc_layers(last_pool_name, snapshot)
         self.probs = tf.nn.softmax(self.outputs)
-        # self.correct_predictions = tf.equal(tf.argmax(self.probs, 1), tf.to_int64(self.testy))
-        # with tf.name_scope("Accuracy"):
-        #     self.acc = tf.reduce_mean(tf.cast(self.correct_predictions, tf.float32))
+        self.correct_predictions = tf.equal(tf.argmax(self.probs, 1), tf.to_int64(self.testy))
+        with tf.name_scope("Accuracy"):
+            self.acc = tf.reduce_mean(tf.cast(self.correct_predictions, tf.float32))
 
-        # self.train_step = self.training()
+        self.train_step = self.training()
 
     def training(self):
         with tf.name_scope("Training"):
