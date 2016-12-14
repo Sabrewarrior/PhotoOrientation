@@ -527,13 +527,13 @@ def split_SUN397(data_loc, out_folder, overwrite=False):
             train_set.extend(temp_set[len(temp_set)//5:])
     with open(os.path.join(out_folder, "valid.txt"), "w") as f:
         for filename in valid_set:
-            f.write(filename)
+            f.write(filename + "\n")
     with open(os.path.join(out_folder, "test.txt"), "w") as f:
         for filename in test_set:
-            f.write(filename)
+            f.write(filename + "\n")
     with open(os.path.join(out_folder, "train.txt"), "w") as f:
         for filename in train_set:
-            f.write(filename)
+            f.write(filename + "\n")
     print(len(valid_set), len(test_set), len(train_set))
     print(count)
 
@@ -651,6 +651,18 @@ def test_read_file_format(data_loc):
     sess.close()
 
 
+def test_sets_files(data_folder):
+    with open(os.path.join(data_folder, "valid.txt")) as f:
+        filenames = f.readlines()
+        print(len(filenames))
+    with open(os.path.join(data_folder, "test.txt")) as f:
+        filenames = f.readlines()
+        print(len(filenames))
+    with open(os.path.join(data_folder, "train.txt")) as f:
+        filenames = f.readlines()
+        print(len(filenames))
+
+
 def run_tests():
     data_loc = "D:\\PhotoOrientation\\SUN397\\images"
     outfolder = "D:\\PhotoOrientation\\SUN397\\sets1"
@@ -666,8 +678,8 @@ def run_tests():
     #        test_open_single_file_with_tf(filename)
 
     # test_each_file_with_tf("D:\\PhotoOrientation\\SUN397\\err_log.txt")
-    split_SUN397(data_loc, outfolder)
-
+    # split_SUN397(data_loc, outfolder)
+    test_sets_files(outfolder)
 
 def run_tests_mac():
     # split_SUN397("~/Documents/SUN397/images", "")
