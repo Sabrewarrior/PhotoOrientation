@@ -3,4 +3,3 @@ test.py
 .idea
 *.pyc
 *.pkl
-*.npz
