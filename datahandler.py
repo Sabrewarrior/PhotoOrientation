@@ -30,6 +30,7 @@ def read_file_format(filename_queue, binary_file=False, rot_to_label=False):
         image = tf.read_file(filename_queue[0])
     else:
         tf.Print(filename_queue[0], [filename_queue[1]])
+
         tensor_image = tf.read_file(filename_queue[0])
 
         image = tf.image.decode_jpeg(tensor_image, channels=3)
@@ -39,10 +40,11 @@ def read_file_format(filename_queue, binary_file=False, rot_to_label=False):
         x = tf.cast(tf.round(tf.mul(tf.cast(tf.shape(image)[0], tf.float32), multiplier)), tf.int32)
         y = tf.cast(tf.round(tf.mul(tf.cast(tf.shape(image)[1], tf.float32), multiplier)), tf.int32)
         image = tf.image.resize_images(image, [x, y])
-        image = tf.image.resize_image_with_crop_or_pad(image, 224, 224)
 
         if rot_to_label:
             image = tf.image.rot90(image, k=label)
+
+        image = tf.image.resize_image_with_crop_or_pad(image, 224, 224)
     return image, label, tags
 
 
@@ -59,6 +61,10 @@ def input_pipeline(directory, batch_size, data_set="train", feature="images", or
                                                                                     orientations=orientations,
                                                                                     num_images=num_images,
                                                                                     labeled_data=labeled_data)
+            print("Loading images from file: " + str(len(image_list)))
+            print(repr(image_list[0]))
+            if os.path.exists(image_list[0]):
+                print("interesting")
         else:
             image_list, label_list, tags_list = create_labeled_image_list(directory, data_set=data_set, feature=feature,
                                                                           orientations=orientations,
@@ -117,21 +123,28 @@ def create_labeled_image_list_from_file(directory, data_set, feature="images", o
     if feature is not None:
         directory = os.path.join(directory, feature)
 
+    filename = os.path.join(directory, data_set + ".txt")
     for orientation in orientations:
         if labeled_data:
             filename = os.path.join(directory, str(orientation), data_set + ".txt")
-        else:
-            filename = os.path.join(directory, data_set + ".txt")
-        with open(filename, 'r') as f:
-            temp_list = f.readlines()
-            if num_images is not None:
-                if num_images > len(temp_list):
-                    temp_list = temp_list[:num_images]
-                num_images -= len(temp_list)
-            temp_label_list = [orientation/90]*len(temp_list)
+
+        with open(filename, 'r', newline='\n') as f:
+            temp_list = f.read().split('\n')
+            i = -1
+            while temp_list[i] == "":
+                i -= 1
+            if i != -1:
+                print("Pruning " + str((i+1) * -1) + " entries")
+                temp_list = temp_list[:i+1]
+
+        temp_label_list = [orientation/90]*len(temp_list)
         image_list.extend(temp_list)
         tags_list.extend(temp_list)
         label_list.extend(temp_label_list)
+    if num_images is not None:
+        image_list = image_list[:num_images]
+        label_list = label_list[:num_images]
+        tags_list = tags_list[:num_images]
     return image_list, label_list, tags_list
 
 
@@ -560,15 +573,15 @@ def split_SUN397(data_loc, out_folder, overwrite=False):
             temp_set = filenames[len(filenames)//5:]
             valid_set.extend(temp_set[:len(temp_set)//5])
             train_set.extend(temp_set[len(temp_set)//5:])
-    with open(os.path.join(out_folder, "valid.txt"), "w") as f:
+    with open(os.path.join(out_folder, "valid.txt"), "w", newline='\n') as f:
         for filename in valid_set:
-            f.write(filename + "\n")
-    with open(os.path.join(out_folder, "test.txt"), "w") as f:
+            f.write(filename + '\n')
+    with open(os.path.join(out_folder, "test.txt"), "w", newline='\n') as f:
         for filename in test_set:
-            f.write(filename + "\n")
-    with open(os.path.join(out_folder, "train.txt"), "w") as f:
+            f.write(filename + '\n')
+    with open(os.path.join(out_folder, "train.txt"), "w", newline='\n') as f:
         for filename in train_set:
-            f.write(filename + "\n")
+            f.write(filename + '\n')
     print(len(valid_set), len(test_set), len(train_set))
     print(count)
 
@@ -686,21 +699,55 @@ def test_read_file_format(data_loc):
     sess.close()
 
 
-def test_sets_files(data_folder):
-    with open(os.path.join(data_folder, "valid.txt")) as f:
+def test_create_labeled_image_list_from_file(data_folder):
+    images, labels, tags = create_labeled_image_list_from_file(data_folder, "train", feature="images",
+                                                               num_images=1000, labeled_data=False)
+    print(len(images), len(labels), len(tags))
+    print(images[0], labels[0], tags[0])
+
+
+def test_sets_files(data_folder, feature):
+    with open(os.path.join(data_folder, feature, "valid.txt")) as f:
         filenames = f.readlines()
         print(len(filenames))
-    with open(os.path.join(data_folder, "test.txt")) as f:
+    with open(os.path.join(data_folder, feature, "test.txt")) as f:
         filenames = f.readlines()
         print(len(filenames))
-    with open(os.path.join(data_folder, "train.txt")) as f:
+    with open(os.path.join(data_folder, feature, "train.txt")) as f:
         filenames = f.readlines()
         print(len(filenames))
+
+
+def test_input_pipeline_from_file(directory):
+    images_batch, labels_batch, tags_batch = input_pipeline(directory, 10, data_set="test", feature="images",
+                                                            orientations=[0], num_epochs=1, num_images=None,
+                                                            labeled_data=False, rand_seed=None, num_threads=10,
+                                                            from_file=True)
+    sess = tf.Session()
+    init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
+    sess.run(init)
+    coord = tf.train.Coordinator()
+    threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+    x = 0
+    step = 0
+    try:
+        while not coord.should_stop():
+            print(step)
+            images, label, tags = sess.run([images_batch, labels_batch, tags_batch])
+            x += len(tags)
+            step += 1
+    except tf.errors.OutOfRangeError:
+        print('Done training -- epoch limit reached')
+    finally:
+        # When done, ask the threads to stop.
+        coord.request_stop()
+    coord.join(threads)
+    print(x)
 
 
 def run_tests():
-    data_loc = "D:\\PhotoOrientation\\SUN397\\images"
-    outfolder = "D:\\PhotoOrientation\\SUN397\\sets1"
+    data_loc = "C:\\PhotoOrientation\\SUN397\\images"
+    outfolder = "C:\\PhotoOrientation\\SUN397\\sets1"
     # for root, dirs, files in os.walk("D:\\PhotoOrientation\\SUN397\\fixes\\converted_images1"):
     #     for filename in files:
     #         test_open_single_file_with_tf(filename=os.path.join(root,filename))
@@ -713,8 +760,11 @@ def run_tests():
     #        test_open_single_file_with_tf(filename)
 
     # test_each_file_with_tf("D:\\PhotoOrientation\\SUN397\\err_log.txt")
-    # split_SUN397(data_loc, outfolder)
-    test_sets_files(outfolder)
+    # test_create_labeled_image_list_from_file("C:\\PhotoOrientation\\SUN397\\sets1")
+    # split_SUN397(data_loc, outfolder + "\\images", overwrite=True)
+    # test_input_pipeline_from_file(outfolder)
+    # test_sets_files(outfolder, "images")
+
 
 def run_tests_mac():
     # split_SUN397("~/Documents/SUN397/images", "")

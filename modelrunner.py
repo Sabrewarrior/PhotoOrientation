@@ -32,8 +32,8 @@ def vgg_model1(batch_size, snapshot=None, global_step=None):
 
 def run_model(model, sess, global_step, read_func, data_folder, snapshot_folder):
     timers = {"batching": 0., "converting": 0., "training": 0., "testing": 0., "acc": 0., "total_tests": 0.}
-    test_steps = 1000
-    valid_steps = 10000
+    test_steps = 10000
+    valid_steps = 25000
     snapshot = {}
     coord = tf.train.Coordinator()
     threads = tf.train.start_queue_runners(sess=sess, coord=coord)
@@ -60,7 +60,8 @@ def run_model(model, sess, global_step, read_func, data_folder, snapshot_folder)
             timers["training"] += (time.time() - now)
 
             # print(sess.run(model.global_step))
-
+            if steps % 2000 == 0:
+                print("Step: " + str(steps))
             if steps % test_steps == 0:
                 print(steps)
                 print("Calculating test accuracy")
@@ -69,24 +70,27 @@ def run_model(model, sess, global_step, read_func, data_folder, snapshot_folder)
                 timers["testing"] += test_time
                 timers["total_tests"] += 1
                 print("Test: " + str(test_acc))
-
-                if steps%valid_steps == 0:
-                    print("Calculating validation accuracy")
-                    acc_valid, valid_time = run_acc_batch(num_valid_images, valid_images, valid_labels, valid_tags,
-                                                          model, sess, max_parallel_calcs=max_parallel_acc_calcs)
-
-                    print("Valid: " + str(acc_valid))
-
-                    for key in model.parameters.keys():
-                        snapshot[key] = sess.run(model.parameters[key])
-                    print(timers)
-                    pickle.dump(snapshot, open(os.path.join(snapshot_folder, str(steps // valid_steps)
-                                                            + ".pkl"), "wb"))
-
                 if test_acc > .99:
+                    print("Achieved very high accuracy, stopping")
                     break
-                print("Training")
-                # snapshot = {}
+                if steps % valid_steps != 0:
+                    print("Resume training")
+
+            if steps % valid_steps == 0:
+                print("Calculating validation accuracy")
+                acc_valid, valid_time = run_acc_batch(num_valid_images, valid_images, valid_labels, valid_tags,
+                                                      model, sess, max_parallel_calcs=max_parallel_acc_calcs)
+
+                print("Valid: " + str(acc_valid))
+
+                for key in model.parameters.keys():
+                    snapshot[key] = sess.run(model.parameters[key])
+                print(timers)
+                pickle.dump(snapshot, open(os.path.join(snapshot_folder, str(steps // valid_steps)
+                                                        + ".pkl"), "wb"))
+
+                print("Resume training")
+            # snapshot = {}
             # timers.append(time.time() - now)
     except tf.errors.OutOfRangeError:
         print('Done training -- epoch limit reached')
@@ -262,18 +266,18 @@ if __name__ == "__main__":
     cur_model = None
     read_func = dummy_reader
     feature_type = "images"
-
-    data_folder_loc = os.path.join("D:", os.sep, "PhotoOrientation", "SUN397")
+    data = "sets1"
+    data_folder_loc = os.path.join("C:", os.sep, "PhotoOrientation", "SUN397", data)
     print(data_folder_loc)
     globalStep = tf.Variable(0, name='global_step', trainable=False)
     ses = tf.Session()  # config=tf.ConfigProto(log_device_placement=True))
 
     vgg = True
-    load_snapshot_filename = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG1\\5.pkl"
-    snapshot_save_folder = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG2"
+    load_snapshot_filename = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG2\\Final.pkl"
+    snapshot_save_folder = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG3"
     if vgg:
-        batch_size = 25
-        max_parallel_acc_calcs = 50
+        batch_size = 10
+        max_parallel_acc_calcs = 20
 
         if os.path.exists(load_snapshot_filename):
             M = pickle.load(open(load_snapshot_filename, 'rb'))
@@ -299,27 +303,34 @@ if __name__ == "__main__":
         feature_type = "hog2"
         read_func = convert_binary_to_array
         bin_or_not = True
-    parallel_acc_by_tags(cur_model, ses, max_parallel_acc_calcs, data_folder_loc, data_set="", feature="images")
-    exit()
+
+    # parallel_acc_by_tags(cur_model, ses, max_parallel_acc_calcs, data_folder_loc, data_set="", feature="images")
+    # exit()
 
     # split_acc_by_tags(cur_model, ses, data_folder, load_snapshot_filename, data_set="train", feature="images")
     # exit()
 
-    num_test_images = 12000
-    num_valid_images = 12000
-    image_batch, label_batch, tags_batch = input_pipeline(data_folder_loc, batch_size, data_set="train",
-                                                          feature=feature_type, binary_file=bin_or_not)
-    test_images, test_labels, test_tags = input_pipeline(data_folder_loc, max_parallel_acc_calcs, data_set="test",
-                                                         feature=feature_type, num_images=num_test_images,
-                                                         binary_file=bin_or_not)
-    valid_images, valid_labels, valid_tags = input_pipeline(data_folder_loc, max_parallel_acc_calcs, data_set="valid",
-                                                            feature=feature_type, num_images=num_valid_images,
-                                                            binary_file=bin_or_not)
-    init = tf.initialize_all_variables()
+    num_test_images = (17276 // batch_size) * batch_size
+    num_valid_images = (21596 // batch_size) * batch_size
+    training_epochs = 1
+    with tf.device("/cpu:0"):
+        image_batch, label_batch, tags_batch = input_pipeline(data_folder_loc, batch_size, data_set="train",
+                                                              feature=feature_type, binary_file=bin_or_not,
+                                                              from_file=True,
+                                                              num_epochs=10)
+        test_images, test_labels, test_tags = input_pipeline(data_folder_loc, max_parallel_acc_calcs, data_set="test",
+                                                             feature=feature_type, num_images=num_test_images,
+                                                             binary_file=bin_or_not, orientations=[0], from_file=True)
+        valid_images, valid_labels, valid_tags = input_pipeline(data_folder_loc, max_parallel_acc_calcs,
+                                                                data_set="valid",
+                                                                feature=feature_type, num_images=num_valid_images,
+                                                                binary_file=bin_or_not, orientations=[0],
+                                                                from_file=True)
+    init = tf.group(tf.local_variables_initializer(), tf.global_variables_initializer())
     ses.run(init)
 
-    # if cur_model:
-    #     if not os.path.exists(os.path.join(data_folder_loc, snapshot_save_folder)):
-    #         os.makedirs(os.path.join(data_folder_loc, snapshot_save_folder))
-    #     run_model(cur_model, ses, globalStep, read_func, data_folder_loc, snapshot_save_folder)
+    if cur_model:
+        if not os.path.exists(os.path.join(data_folder_loc, snapshot_save_folder)):
+            os.makedirs(os.path.join(data_folder_loc, snapshot_save_folder))
+        run_model(cur_model, ses, globalStep, read_func, data_folder_loc, snapshot_save_folder)
 
