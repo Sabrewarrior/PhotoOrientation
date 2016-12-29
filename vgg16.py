@@ -119,7 +119,8 @@ class VGG16:
         final_pool_flat = tf.reshape(self.tensors[input_name], [-1, shape])
         print("Shape of last conv is " + str(shape))
         with tf.name_scope('fc6') as scope:
-            if snapshot and shape == snapshot['fc6_W'].shape[0]:
+            if snapshot and shape == snapshot['fc6_W'].shape[0] and snapshot['fc6_W'].shape[1] == 512:
+                print(snapshot['fc6_W'].shape, shape)
                 print("Snapshot found for fc6, loading weights and biases")
                 wl = snapshot['fc6_W']
                 bl = snapshot['fc6_b']
@@ -133,7 +134,7 @@ class VGG16:
 
         # fc7
         with tf.name_scope('fc7') as scope:
-            if snapshot and shape == snapshot['fc6_W'].shape[0]:
+            if snapshot and 512 == snapshot['fc7_W'].shape[0]:
                 wl = snapshot['fc7_W']
                 bl = snapshot['fc7_b']
                 print("Snapshot found for fc7, loading weights and biases")
@@ -148,7 +149,7 @@ class VGG16:
 
         # fc8
         with tf.name_scope('fc8') as scope:
-            if snapshot and shape == snapshot['fc6_W'].shape[0]:
+            if snapshot and 512 == snapshot['fc8_W'].shape[0]:
                 print("Snapshot found for fc8, loading weights and biases")
                 wl = snapshot['fc8_W']
                 bl = snapshot['fc8_b']

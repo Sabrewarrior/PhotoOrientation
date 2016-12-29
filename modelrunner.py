@@ -273,7 +273,7 @@ if __name__ == "__main__":
     ses = tf.Session()  # config=tf.ConfigProto(log_device_placement=True))
 
     vgg = True
-    load_snapshot_filename = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG3\\2.pkl"
+    load_snapshot_filename = "D:\\PhotoOrientation\\data\\SUN397\\snapshotVGG3\\2.pkl"
     snapshot_save_folder = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG4"
     if vgg:
         batch_size = 10
