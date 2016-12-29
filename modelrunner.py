@@ -273,8 +273,8 @@ if __name__ == "__main__":
     ses = tf.Session()  # config=tf.ConfigProto(log_device_placement=True))
 
     vgg = True
-    load_snapshot_filename = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG2\\Final.pkl"
-    snapshot_save_folder = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG3"
+    load_snapshot_filename = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG3\\2.pkl"
+    snapshot_save_folder = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG4"
     if vgg:
         batch_size = 10
         max_parallel_acc_calcs = 20
@@ -317,7 +317,7 @@ if __name__ == "__main__":
         image_batch, label_batch, tags_batch = input_pipeline(data_folder_loc, batch_size, data_set="train",
                                                               feature=feature_type, binary_file=bin_or_not,
                                                               from_file=True,
-                                                              num_epochs=10)
+                                                              num_epochs=6)
         test_images, test_labels, test_tags = input_pipeline(data_folder_loc, max_parallel_acc_calcs, data_set="test",
                                                              feature=feature_type, num_images=num_test_images,
                                                              binary_file=bin_or_not, orientations=[0], from_file=True)
