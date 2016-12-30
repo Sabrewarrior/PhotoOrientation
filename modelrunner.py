@@ -23,11 +23,12 @@ def hog_model(batch_size, snapshot=None, global_step=None):
                                     snapshot=snapshot)
 
 
-def vgg_model1(batch_size, snapshot=None, global_step=None):
+def vgg_model1(batch_size, fc_size, snapshot=None, global_step=None):
     learning_rate = .00001
     imgs = tf.placeholder(tf.float32, shape=(None, 224, 224, 3), name="Inputs")
     y_ = tf.placeholder(tf.int32, shape=(batch_size), name="Outputs")
-    return vgg16.VGG16(imgs,y_, learning_rate, max_pool_num=5, global_step=global_step, snapshot=snapshot)
+    return vgg16.VGG16(imgs,y_, learning_rate, fc_size=fc_size, max_pool_num=5,
+                       global_step=global_step, snapshot=snapshot)
 
 
 def run_model(model, sess, global_step, read_func, data_folder, snapshot_folder):
@@ -50,7 +51,6 @@ def run_model(model, sess, global_step, read_func, data_folder, snapshot_folder)
             imgs = read_func(imgs)
             timers["converting"] += (time.time() - now)
 
-            steps += 1
             # if steps % test_steps == 0:
             #     print(sess.run(global_step))
             #     print("Train: " + str(sess.run(model.acc, feed_dict={model.inputs: imgs, model.testy: labels})))
@@ -75,6 +75,7 @@ def run_model(model, sess, global_step, read_func, data_folder, snapshot_folder)
                     break
                 if steps % valid_steps != 0:
                     print("Resume training")
+            steps += 1
 
             if steps % valid_steps == 0:
                 print("Calculating validation accuracy")
@@ -295,20 +296,28 @@ if __name__ == "__main__":
     load_snapshot_filename = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG3\\2.pkl"
     snapshot_save_folder = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG4"
     if vgg:
-        batch_size = 20
-        max_parallel_acc_calcs = 40
+        batch_size = 10
+        max_parallel_acc_calcs = 20
 
         if os.path.exists(load_snapshot_filename):
             M = pickle.load(open(load_snapshot_filename, 'rb'))
             print("Snapshot Loaded")
+            Z = {}
+            for each in M:
+                Z[each] = M[each]
+
         else:
             print("Snapshot not found, loading default weights")
             M = np.load('vgg16_weights.npz')
             # Change last to 4 layers
-            M['fc8_W'] = M['fc8_W'][:, :4]
-            M['fc8_b'] = M['fc8_b'][:4]
+            Z = {}
+            for each in M:
+                Z[each] = M[each]
+        if M['fc8_W'].shape[1] != 4:
+            Z['fc8_W'] = M['fc8_W'][:, :4]
+            Z['fc8_b'] = M['fc8_b'][:4]
         feature_type = "images"
-        cur_model = vgg_model1(batch_size, fc_size=512, snapshot=M, global_step=globalStep)
+        cur_model = vgg_model1(batch_size, fc_size=4096, snapshot=Z, global_step=globalStep)
         bin_or_not = False
     else:
         batch_size = 100

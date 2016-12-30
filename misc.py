@@ -2,7 +2,9 @@ from shutil import copyfile
 import os
 import csv
 import numpy as np
-
+from PIL import Image
+import tensorflow as tf
+from datahandler import input_pipeline
 
 def find_num_images_by_tag(data_folder, class_names_file=None):
     print(class_names_file)
@@ -174,6 +176,14 @@ def find_corrupt_in_log(logfile):
                 print_next = True
 
 
+def inputs():
+    filenames = ['img1.jpg', 'img2.jpg' ]
+    filename_queue = tf.train.string_input_producer(filenames,num_epochs=1)
+    read_input = read_image(filename_queue)
+    reshaped_image = modify_image(read_input)
+    return reshaped_image
+
+
 if __name__ == "__main__":
     data_folder_loc = os.path.join("D:\\PhotoOrientation", "SUN397", "incorrect")
     outfolder = os.path.join("D:", os.sep, "PhotoOrientation", "SUN397", "fixes")
@@ -197,3 +207,30 @@ if __name__ == "__main__":
 
         # print("err")
     # print(count)
+
+    cur_dir = os.getcwd()
+    print("resizing images")
+    print("current directory:",cur_dir)
+
+    with tf.Graph().as_default():
+        image_batch, label_batch, tag_batch = input_pipeline(data_folder_loc, batch_size, data_set="train",
+                                                              feature=feature_type, binary_file=bin_or_not,
+                                                              from_file=True,
+                                                              num_epochs=6)
+        test_images, test_labels, test_tags = input_pipeline(data_folder_loc, max_parallel_acc_calcs, data_set="test",
+                                                             feature=feature_type, num_images=num_test_images,
+                                                             binary_file=bin_or_not, orientations=[0], from_file=True)
+        valid_images, valid_labels, valid_tags = input_pipeline(data_folder_loc, max_parallel_acc_calcs,
+                                                                data_set="valid",
+                                                                feature=feature_type, num_images=num_valid_images,
+                                                                binary_file=bin_or_not, orientations=[0],
+                                                                from_file=True)
+        image = inputs()
+        init = tf.initialize_all_variables()
+        sess = tf.Session()
+        sess.run(init)
+        tf.train.start_queue_runners(sess=sess)
+        for i in xrange(2):
+            img = sess.run(image)
+            img = Image.fromarray(img, "RGB")
+
