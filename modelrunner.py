@@ -273,14 +273,16 @@ if __name__ == "__main__":
     for filename in ["test.txt", "train.txt", "valid.txt"]:
         with open(os.path.join(os.getcwd(), "datasets", data, feature_type, filename), 'r', newline='\n') as f:
             text = f.read().split('\r\n')
+            print(len(text))
             if len(text) == 1:
                 text = f.read().split('\n')
             saved = []
             for each in text:
                 if each != '':
                     saved.append(os.path.join(data_loc, feature_type, each.split(feature_type)[1][1:]))
-
-        with open(os.path.join(os.getcwd(), "temp", filename), 'w', newline='\n') as f:
+        if not os.path.exists(os.path.join(os.getcwd(), "temp", feature_type)):
+            os.makedirs(os.path.join(os.getcwd(), "temp", feature_type))
+        with open(os.path.join(os.getcwd(), "temp", feature_type, filename), 'w', newline='\n') as f:
             for each in saved:
                 f.write(each + '\n')
     data_folder_loc = os.path.join(os.getcwd(), "temp")
@@ -292,8 +294,8 @@ if __name__ == "__main__":
     load_snapshot_filename = "D:\\PhotoOrientation\\data\\SUN397\\snapshotVGG3\\2.pkl"
     snapshot_save_folder = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG4"
     if vgg:
-        batch_size = 10
-        max_parallel_acc_calcs = 20
+        batch_size = 20
+        max_parallel_acc_calcs = 40
 
         if os.path.exists(load_snapshot_filename):
             M = pickle.load(open(load_snapshot_filename, 'rb'))
