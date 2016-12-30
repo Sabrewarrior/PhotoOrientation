@@ -19,13 +19,14 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_nn_ops
 
 class VGG16:
-    def __init__(self, imgs, y_, learning_rate, max_pool_num=5, guided_grad=False, global_step=None, snapshot=None):
+    def __init__(self, imgs, y_, learning_rate, max_pool_num=5, fc_size=4096, guided_grad=False, global_step=None, snapshot=None):
 
         self.inputs = imgs
         self.labels = y_
         self.testy = tf.placeholder(tf.int32, [None, ], name="Test_y")
         self.parameters = {}
         self.tensors = {}
+        self.fc_size = fc_size
         self.global_step = global_step
         self.learning_rate = learning_rate
         self.keep_probs = tf.Variable(1, name='keep_probs', trainable=False, dtype=tf.float32)
@@ -119,14 +120,14 @@ class VGG16:
         final_pool_flat = tf.reshape(self.tensors[input_name], [-1, shape])
         print("Shape of last conv is " + str(shape))
         with tf.name_scope('fc6') as scope:
-            if snapshot and shape == snapshot['fc6_W'].shape[0] and snapshot['fc6_W'].shape[1] == 512:
+            if snapshot and (shape, self.fc_size) == snapshot['fc6_W'].shape:
                 print(snapshot['fc6_W'].shape, shape)
                 print("Snapshot found for fc6, loading weights and biases")
                 wl = snapshot['fc6_W']
                 bl = snapshot['fc6_b']
             else:
-                wl = tf.truncated_normal([shape, 512], dtype=tf.float32, stddev=1e-1)
-                bl = tf.constant(1.0, shape=[512], dtype=tf.float32)
+                wl = tf.truncated_normal([shape, self.fc_size], dtype=tf.float32, stddev=1e-1)
+                bl = tf.constant(1.0, shape=[self.fc_size], dtype=tf.float32)
             self.parameters.update({"fc6_W": tf.Variable(wl, trainable=True, name='weights')})
             self.parameters.update({"fc6_b": tf.Variable(bl, trainable=True, name='biases')})
             fc6l = tf.nn.bias_add(tf.matmul(final_pool_flat, self.parameters['fc6_W']), self.parameters['fc6_b'])
@@ -134,13 +135,13 @@ class VGG16:
 
         # fc7
         with tf.name_scope('fc7') as scope:
-            if snapshot and 512 == snapshot['fc7_W'].shape[0]:
+            if snapshot and (self.fc_size, self.fc_size) == snapshot['fc7_W'].shape:
                 wl = snapshot['fc7_W']
                 bl = snapshot['fc7_b']
                 print("Snapshot found for fc7, loading weights and biases")
             else:
-                wl = tf.truncated_normal([512, 512], dtype=tf.float32, stddev=1e-1)
-                bl = tf.constant(1.0, shape=[512], dtype=tf.float32)
+                wl = tf.truncated_normal([self.fc_size, self.fc_size], dtype=tf.float32, stddev=1e-1)
+                bl = tf.constant(1.0, shape=[self.fc_size], dtype=tf.float32)
             self.parameters.update({"fc7_W": tf.Variable(wl, trainable=True, name='weights')})
             self.parameters.update({"fc7_b": tf.Variable(bl, trainable=True, name='biases')})
 
@@ -149,12 +150,12 @@ class VGG16:
 
         # fc8
         with tf.name_scope('fc8') as scope:
-            if snapshot and 512 == snapshot['fc8_W'].shape[0]:
+            if snapshot and self.fc_size == snapshot['fc8_W'].shape[0] and 4 == snapshot['fc8_W'].shape[1]:
                 print("Snapshot found for fc8, loading weights and biases")
                 wl = snapshot['fc8_W']
                 bl = snapshot['fc8_b']
             else:
-                wl = tf.truncated_normal([512, 4], dtype=tf.float32, stddev=1e-1)
+                wl = tf.truncated_normal([self.fc_size, 4], dtype=tf.float32, stddev=1e-1)
                 bl = tf.constant(0.1, shape=[4], dtype=tf.float32)
             self.parameters.update({"fc8_W": tf.Variable(wl, trainable=True, name='weights')})
             self.parameters.update({"fc8_b": tf.Variable(bl, trainable=True, name='biases')})

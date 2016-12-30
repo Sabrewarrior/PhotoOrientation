@@ -276,6 +276,7 @@ if __name__ == "__main__":
             print(len(text))
             if len(text) == 1:
                 text = text[0].split('\n')
+            print(len(text))
             saved = []
             for each in text:
                 if each != '':
@@ -291,7 +292,7 @@ if __name__ == "__main__":
     ses = tf.Session()  # config=tf.ConfigProto(log_device_placement=True))
 
     vgg = True
-    load_snapshot_filename = "D:\\PhotoOrientation\\data\\SUN397\\snapshotVGG3\\2.pkl"
+    load_snapshot_filename = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG3\\2.pkl"
     snapshot_save_folder = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG4"
     if vgg:
         batch_size = 20
@@ -303,8 +304,11 @@ if __name__ == "__main__":
         else:
             print("Snapshot not found, loading default weights")
             M = np.load('vgg16_weights.npz')
+            # Change last to 4 layers
+            M['fc8_W'] = M['fc8_W'][:, :4]
+            M['fc8_b'] = M['fc8_b'][:4]
         feature_type = "images"
-        cur_model = vgg_model1(batch_size, snapshot=M, global_step=globalStep)
+        cur_model = vgg_model1(batch_size, fc_size=512, snapshot=M, global_step=globalStep)
         bin_or_not = False
     else:
         batch_size = 100
