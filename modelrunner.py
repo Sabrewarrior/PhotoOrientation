@@ -271,17 +271,20 @@ if __name__ == "__main__":
     data_loc = os.getenv('data_loc')
     # print(data_folder_loc)
     for filename in ["test.txt", "train.txt", "valid.txt"]:
-        with open(os.path.join(os.getcwd(), "datasets", data, feature_type, filename), 'r') as f:
-            text = f.read().split('\n')
+        with open(os.path.join(os.getcwd(), "datasets", data, feature_type, filename), 'r', newline='\n') as f:
+            text = f.read().split('\r\n')
+            if len(text) == 1:
+                text = f.read().split('\n')
             saved = []
             for each in text:
                 if each != '':
                     saved.append(os.path.join(data_loc, feature_type, each.split(feature_type)[1][1:]))
-        with open(os.path.join(os.getcwd(), "temp", filename), 'w') as f:
+
+        with open(os.path.join(os.getcwd(), "temp", filename), 'w', newline='\n') as f:
             for each in saved:
                 f.write(each + '\n')
     data_folder_loc = os.path.join(os.getcwd(), "temp")
-    exit()
+
     globalStep = tf.Variable(0, name='global_step', trainable=False)
     ses = tf.Session()  # config=tf.ConfigProto(log_device_placement=True))
 
