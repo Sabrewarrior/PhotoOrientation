@@ -275,7 +275,7 @@ if __name__ == "__main__":
             text = f.read().split('\r\n')
             print(len(text))
             if len(text) == 1:
-                text = f.read().split('\n')
+                text = text[0].split('\n')
             saved = []
             for each in text:
                 if each != '':
