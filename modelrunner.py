@@ -305,8 +305,8 @@ if __name__ == "__main__":
     load_snapshot_filename = "E:\\PhotoOrientation\\data\\SUN397\\snapshotVGG3\\2.pkl"
     snapshot_save_folder = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG1k1"
     if vgg:
-        batch_size = 20
-        max_parallel_acc_calcs = 40
+        batch_size = 10
+        max_parallel_acc_calcs = 20
 
         if os.path.exists(load_snapshot_filename):
             M = pickle.load(open(load_snapshot_filename, 'rb'))
@@ -326,7 +326,7 @@ if __name__ == "__main__":
             Z['fc8_W'] = M['fc8_W'][:, :4]
             Z['fc8_b'] = M['fc8_b'][:4]
         feature_type = "images"
-        cur_model = vgg_model1(batch_size, fc_size=1024, snapshot=Z, global_step=globalStep)
+        cur_model = vgg_model1(batch_size, fc_size=4096, snapshot=Z, global_step=globalStep)
         bin_or_not = False
     else:
         batch_size = 100
@@ -350,8 +350,8 @@ if __name__ == "__main__":
     # split_acc_by_tags(cur_model, ses, data_folder, load_snapshot_filename, data_set="train", feature="images")
     # exit()
 
-    num_test_images = (17276 // batch_size) * batch_size
-    num_valid_images = (21596 // batch_size) * batch_size
+    num_test_images = ((17276*4) // batch_size) * batch_size
+    num_valid_images = ((21596*4) // batch_size) * batch_size
     training_epochs = 1
     with tf.device("/cpu:0"):
         image_batch, label_batch, tags_batch = input_pipeline(data_folder_loc, batch_size, data_set="train",
@@ -360,15 +360,23 @@ if __name__ == "__main__":
                                                               num_epochs=6)
         test_images, test_labels, test_tags = input_pipeline(data_folder_loc, max_parallel_acc_calcs, data_set="test",
                                                              feature=feature_type, num_images=num_test_images,
-                                                             binary_file=bin_or_not, orientations=[0], from_file=True)
+                                                             binary_file=bin_or_not, orientations=[0, 90, 180, 270],
+                                                             from_file=True)
+
         valid_images, valid_labels, valid_tags = input_pipeline(data_folder_loc, max_parallel_acc_calcs,
                                                                 data_set="valid",
                                                                 feature=feature_type, num_images=num_valid_images,
-                                                                binary_file=bin_or_not, orientations=[0],
+                                                                binary_file=bin_or_not, orientations=[0, 90, 180, 270],
                                                                 from_file=True)
+
     init = tf.group(tf.local_variables_initializer(), tf.global_variables_initializer())
     ses.run(init)
-
+    acc_valid = 0.
+    acc_valid, valid_time = run_acc_batch(num_valid_images, valid_images, valid_labels, valid_tags,
+                                          cur_model, ses, max_parallel_calcs=max_parallel_acc_calcs)
+    print("Valid: " + str(acc_valid))
+    ses.close()
+    exit()
     if cur_model:
         if not os.path.exists(os.path.join(data_folder_loc, snapshot_save_folder)):
             os.makedirs(os.path.join(data_folder_loc, snapshot_save_folder))
