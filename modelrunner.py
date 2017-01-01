@@ -60,8 +60,11 @@ def run_model(model, sess, global_step, read_func, data_folder, snapshot_folder)
             timers["training"] += (time.time() - now)
 
             # print(sess.run(model.global_step))
-            if steps % 2000 == 0:
+            if steps % 1000 == 0:
                 print("Step: " + str(steps))
+
+            steps += 1
+
             if steps % test_steps == 0:
                 print(steps)
                 print("Calculating test accuracy")
@@ -75,7 +78,6 @@ def run_model(model, sess, global_step, read_func, data_folder, snapshot_folder)
                     break
                 if steps % valid_steps != 0:
                     print("Resume training")
-            steps += 1
 
             if steps % valid_steps == 0:
                 print("Calculating validation accuracy")
@@ -87,6 +89,7 @@ def run_model(model, sess, global_step, read_func, data_folder, snapshot_folder)
                 for key in model.parameters.keys():
                     snapshot[key] = sess.run(model.parameters[key])
                 print(timers)
+                snapshot['model_acc'] = acc_valid
                 pickle.dump(snapshot, open(os.path.join(snapshot_folder, str(steps // valid_steps)
                                                         + ".pkl"), "wb"))
 
@@ -95,6 +98,12 @@ def run_model(model, sess, global_step, read_func, data_folder, snapshot_folder)
             # timers.append(time.time() - now)
     except tf.errors.OutOfRangeError:
         print('Done training -- epoch limit reached')
+        print("Calculating validation accuracy")
+        acc_valid, valid_time = run_acc_batch(num_valid_images, valid_images, valid_labels, valid_tags,
+                                              model, sess, max_parallel_calcs=max_parallel_acc_calcs)
+
+        print("Valid: " + str(acc_valid))
+        snapshot['model_acc'] = acc_valid
     finally:
         # When done, ask the threads to stop.
         coord.request_stop()
@@ -293,11 +302,11 @@ if __name__ == "__main__":
     ses = tf.Session()  # config=tf.ConfigProto(log_device_placement=True))
 
     vgg = True
-    load_snapshot_filename = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG3\\2.pkl"
-    snapshot_save_folder = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG4"
+    load_snapshot_filename = "E:\\PhotoOrientation\\data\\SUN397\\snapshotVGG3\\2.pkl"
+    snapshot_save_folder = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG1k1"
     if vgg:
-        batch_size = 10
-        max_parallel_acc_calcs = 20
+        batch_size = 20
+        max_parallel_acc_calcs = 40
 
         if os.path.exists(load_snapshot_filename):
             M = pickle.load(open(load_snapshot_filename, 'rb'))
@@ -317,7 +326,7 @@ if __name__ == "__main__":
             Z['fc8_W'] = M['fc8_W'][:, :4]
             Z['fc8_b'] = M['fc8_b'][:4]
         feature_type = "images"
-        cur_model = vgg_model1(batch_size, fc_size=4096, snapshot=Z, global_step=globalStep)
+        cur_model = vgg_model1(batch_size, fc_size=1024, snapshot=Z, global_step=globalStep)
         bin_or_not = False
     else:
         batch_size = 100
