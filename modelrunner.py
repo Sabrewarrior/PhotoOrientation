@@ -138,8 +138,12 @@ def run_acc_batch(num_images, images, labels, tags, model, sess, max_parallel_ca
                 raw_imgs_list, labels_list, tags_list = sess.run([images, labels, tags])
                 imgs_list = read_func(raw_imgs_list)
                 total_test += len(imgs_list)
+                print(tags_list)
+                print(labels_list)
+                exit()
                 acc += sess.run(model.acc, feed_dict={model.inputs: imgs_list, model.testy: labels_list,
                                                       model.keep_probs: 1})
+
             break
     finally:
         coord.request_stop()
@@ -149,16 +153,15 @@ def run_acc_batch(num_images, images, labels, tags, model, sess, max_parallel_ca
     return acc/repeat_num, timer
 
 
-def parallel_acc_by_tags(model, sess, max_parallel_calcs, data_folder, data_set="test", feature="images"):
-    if data_set:
-        data_folder = os.path.join(data_folder, data_set)
-    if feature:
-        data_folder = os.path.join(data_folder, feature)
-    orientations = [d for d in os.listdir(data_folder) if os.path.isdir(os.path.join(data_folder, d))]
-    print(orientations)
+def parallel_acc_by_tags(model, sess, max_parallel_calcs, data_folder, from_file=None, data_set="test",
+                         feature="images", orientations=None):
     total_images = 0
-    images, labels, tags = input_pipeline(data_folder_loc, max_parallel_calcs, data_set=None, feature=feature,
-                                          binary_file=bin_or_not, num_epochs=1, num_images=None)
+    if orientations is None:
+        orientations = [0, 90, 180, 270]
+    images, labels, tags = input_pipeline(data_folder_loc, max_parallel_acc_calcs, data_set=data_set,
+                                          feature=feature, num_images=None,
+                                          binary_file=False, orientations=orientations,
+                                          from_file=from_file, num_epochs=1)
 
     incorrect_images_list = tf.Variable([], dtype=tf.string, trainable=False, name="Incorrect_images")
     adder_image_names = tf.placeholder(dtype=tf.string, shape=[None], name="Adder_images")
@@ -166,7 +169,13 @@ def parallel_acc_by_tags(model, sess, max_parallel_calcs, data_folder, data_set=
     add_incorrect_images = tf.assign(incorrect_images_list, new_incorrect_images_list, use_locking=True,
                                      validate_shape=False)
 
-    init_ops = tf.group(tf.initialize_all_variables(), tf.initialize_local_variables())
+    incorrect_labels_list = tf.Variable([], dtype=tf.int32, trainable=False, name="Incorrect_image_labels")
+    adder_image_labels = tf.placeholder(dtype=tf.int32, shape=[None], name="Adder_image_labels")
+    new_incorrect_labels_list = tf.concat(0, [incorrect_labels_list, adder_image_labels])
+    add_incorrect_labels = tf.assign(incorrect_labels_list, new_incorrect_labels_list, use_locking=True,
+                                     validate_shape=False)
+
+    init_ops = tf.group(tf.local_variables_initializer(), tf.global_variables_initializer())
     sess.run(init_ops)
 
     coord = tf.train.Coordinator()
@@ -185,6 +194,8 @@ def parallel_acc_by_tags(model, sess, max_parallel_calcs, data_folder, data_set=
 
             # Uses locking so we do not lose any incorrect classifications
             sess.run(add_incorrect_images, feed_dict={adder_image_names: tags_list[incorrect_indices]})
+            sess.run(add_incorrect_labels, feed_dict={adder_image_labels: labels_list[incorrect_indices]})
+
             if steps % 100 == 0:
                 print("Calculated " + str(steps*max_parallel_calcs) + " files")
     except tf.errors.OutOfRangeError:
@@ -194,12 +205,13 @@ def parallel_acc_by_tags(model, sess, max_parallel_calcs, data_folder, data_set=
         coord.request_stop()
     coord.join(threads)
     inc_name = sess.run(incorrect_images_list)
+    inc_label = sess.run(incorrect_labels_list)
     print("Correct classifications: " + str(total_images - len(inc_name)))
     print("Total images: " + str(total_images))
     print("Accuracy: " + str((total_images - len(inc_name))/total_images))
     with open(os.path.join(data_folder, "incorrect.txt"), 'w') as f:
-        for each in inc_name:
-            f.write(os.path.join(data_folder, each.decode('utf-8'))+'\n')
+        for i in range(len(inc_name)):
+            f.write(os.path.join(data_folder, inc_name[i].decode('utf-8')) + ', ' + str(inc_label[i]*90) + '\n')
     sess.close()
 
 
@@ -273,6 +285,7 @@ def split_acc_by_tags(model, sess, data_folder, snapshot_filename, data_set="tes
 # Test with different bounding boxes
 
 if __name__ == "__main__":
+
     cur_model = None
     read_func = dummy_reader
     feature_type = "images"
@@ -283,7 +296,6 @@ if __name__ == "__main__":
     for filename in ["test.txt", "train.txt", "valid.txt"]:
         with open(os.path.join(os.getcwd(), "datasets", data, feature_type, filename), 'r', newline='\n') as f:
             text = f.read().split('\r\n')
-            print(len(text))
             if len(text) == 1:
                 text = text[0].split('\n')
             print(len(text))
@@ -302,7 +314,7 @@ if __name__ == "__main__":
     ses = tf.Session()  # config=tf.ConfigProto(log_device_placement=True))
 
     vgg = True
-    load_snapshot_filename = "E:\\PhotoOrientation\\data\\SUN397\\snapshotVGG3\\2.pkl"
+    load_snapshot_filename = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG3\\2.pkl"
     snapshot_save_folder = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG1k1"
     if vgg:
         batch_size = 10
@@ -344,20 +356,19 @@ if __name__ == "__main__":
         read_func = convert_binary_to_array
         bin_or_not = True
 
-    # parallel_acc_by_tags(cur_model, ses, max_parallel_acc_calcs, data_folder_loc, data_set="", feature="images")
-    # exit()
-
-    # split_acc_by_tags(cur_model, ses, data_folder, load_snapshot_filename, data_set="train", feature="images")
-    # exit()
-
-    num_test_images = ((17276*4) // batch_size) * batch_size
-    num_valid_images = ((21596*4) // batch_size) * batch_size
+    num_test_images = ((21596 * 4) // batch_size) * batch_size
+    num_valid_images = ((17276 * 4) // batch_size) * batch_size
     training_epochs = 1
+
+    #parallel_acc_by_tags(cur_model, ses, max_parallel_acc_calcs, data_folder_loc,
+    #                     from_file=True, data_set="valid", feature="images", orientations=[0, 90, 180, 270])
+    #exit()
+
     with tf.device("/cpu:0"):
         image_batch, label_batch, tags_batch = input_pipeline(data_folder_loc, batch_size, data_set="train",
                                                               feature=feature_type, binary_file=bin_or_not,
                                                               from_file=True,
-                                                              num_epochs=6)
+                                                              num_epochs=training_epochs)
         test_images, test_labels, test_tags = input_pipeline(data_folder_loc, max_parallel_acc_calcs, data_set="test",
                                                              feature=feature_type, num_images=num_test_images,
                                                              binary_file=bin_or_not, orientations=[0, 90, 180, 270],
@@ -371,11 +382,26 @@ if __name__ == "__main__":
 
     init = tf.group(tf.local_variables_initializer(), tf.global_variables_initializer())
     ses.run(init)
+
+    ''' Create a file which saves incorrect image as '(image filename), (orientation)\n'
+    # parallel_acc_by_tags(cur_model, ses, max_parallel_acc_calcs, data_folder_loc, data_set="", feature="images")
+    # exit()
+    '''
+
+    ''' Create a file with stats for individual tags
+    # split_acc_by_tags(cur_model, ses, data_folder, load_snapshot_filename, data_set="train", feature="images")
+    # exit()
+    '''
+
+    # ''' Calculate individual accuracy without starting training
     acc_valid = 0.
     acc_valid, valid_time = run_acc_batch(num_valid_images, valid_images, valid_labels, valid_tags,
                                           cur_model, ses, max_parallel_calcs=max_parallel_acc_calcs)
     print("Valid: " + str(acc_valid))
+    # '''
+
     ses.close()
+
     exit()
     if cur_model:
         if not os.path.exists(os.path.join(data_folder_loc, snapshot_save_folder)):

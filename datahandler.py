@@ -61,10 +61,7 @@ def input_pipeline(directory, batch_size, data_set="train", feature="images", or
                                                                                     orientations=orientations,
                                                                                     num_images=num_images,
                                                                                     labeled_data=labeled_data)
-            print("Loading images from file: " + str(len(image_list)))
-            print(repr(image_list[0]))
-            if os.path.exists(image_list[0]):
-                print("interesting")
+            # print(repr(image_list[0]))
         else:
             image_list, label_list, tags_list = create_labeled_image_list(directory, data_set=data_set, feature=feature,
                                                                           orientations=orientations,
@@ -124,6 +121,7 @@ def create_labeled_image_list_from_file(directory, data_set, feature="images", o
         directory = os.path.join(directory, feature)
 
     filename = os.path.join(directory, data_set + ".txt")
+    print("Loading images from: " + filename)
     for orientation in orientations:
         if labeled_data:
             filename = os.path.join(directory, str(orientation), data_set + ".txt")
@@ -134,9 +132,8 @@ def create_labeled_image_list_from_file(directory, data_set, feature="images", o
             while temp_list[i] == "":
                 i -= 1
             if i != -1:
-                print("Pruning " + str((i+1) * -1) + " entries")
+                # print("Pruning " + str((i+1) * -1) + " entries")
                 temp_list = temp_list[:i+1]
-
         temp_label_list = [orientation/90]*len(temp_list)
         image_list.extend(temp_list)
         tags_list.extend(temp_list)
@@ -145,6 +142,7 @@ def create_labeled_image_list_from_file(directory, data_set, feature="images", o
         image_list = image_list[:num_images]
         label_list = label_list[:num_images]
         tags_list = tags_list[:num_images]
+    print("Number of images found: " + str(len(image_list)))
     return image_list, label_list, tags_list
 
 

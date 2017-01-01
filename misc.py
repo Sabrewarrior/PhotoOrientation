@@ -38,6 +38,7 @@ def find_num_images_by_tag(data_folder, class_names_file=None):
 
 
 def copy_incorrect(in_folder, out_folder, incorrect_files="snapshotVGG1-5-test.txt"):
+    from scipy.misc import imread, imsave, imrotate
     print(incorrect_files)
     if os.path.exists(incorrect_files):
         f = open(incorrect_files, "r")
@@ -52,17 +53,23 @@ def copy_incorrect(in_folder, out_folder, incorrect_files="snapshotVGG1-5-test.t
     count = 0
     for source in sources:
         if source.find("jpg") >= 0:
-            print(source)
+            fileinfo = source
+            if source.find(",") >= 0:
+                fileinfo = source.split(", ")[0]
+                rotation = source.split(", ")[1]
+                image = imread(fileinfo)
+                image = imrotate(image, int(rotation))
+            else:
+                image = imread(fileinfo)
+            if count == 0:
+                print(fileinfo)
             count += 1
-            res, filename = os.path.split(source)
-            res, layout = os.path.split(res)
-            res, tag = os.path.split(res)
-            res, orientation = os.path.split(res)
-            destination = os.path.join(out_folder, "incorrect", orientation, tag, layout)
+            destination = os.path.split(fileinfo.replace(in_folder, out_folder))[0]
             if not os.path.exists(destination):
                 os.makedirs(destination)
-            copyfile(source, os.path.join(destination, filename))
-
+            filename = os.path.split(fileinfo)[1]
+            # print(os.path.join(destination, filename))
+            imsave(os.path.join(destination, filename), image)
     print("Moved " + str(count) + " files")
 
 
@@ -185,10 +192,15 @@ def inputs():
 
 
 if __name__ == "__main__":
-    data_folder_loc = os.path.join("D:\\PhotoOrientation", "SUN397", "incorrect")
+    outfolder_loc = os.path.join(os.getcwd(), "temp", "incorrect_images")
+    print(outfolder_loc)
+    data_loc = "C:\\PhotoOrientation\\SUN397\\images"
+    inc_file = "temp\\incorrect.txt"
+    copy_incorrect(data_loc, outfolder_loc,incorrect_files=inc_file)
+    '''data_folder_loc = os.path.join("D:\\PhotoOrientation", "SUN397", "incorrect")
     outfolder = os.path.join("D:", os.sep, "PhotoOrientation", "SUN397", "fixes")
 
-    '''
+
     find_corrupt_in_log("C:\PhotoOrientation\data\SUN397\Logs\log_errors.txt")
     copy_incorrect("D:\\PhotoOrientation\\SUN397", "D:\\PhotoOrientation\\SUN397",
                    "C:\\PhotoOrientation\\data\\SUN397\\Logs\\incorrect_endings.txt")
@@ -201,7 +213,7 @@ if __name__ == "__main__":
         print(tag + ": " + str(image_nums[tag]))
     write_dict_to_csv(image_nums, os.path.join(os.path.split(data_folder_loc)[0], "stats"), "data_info",
                       col_keys=["Num Images"])
-    '''
+
     # copy_incorrect(data_folder, data_folder)
     # convert_files_to_jpeg(data_folder_loc, outfolder)
 
@@ -233,4 +245,4 @@ if __name__ == "__main__":
         for i in xrange(2):
             img = sess.run(image)
             img = Image.fromarray(img, "RGB")
-
+    '''
