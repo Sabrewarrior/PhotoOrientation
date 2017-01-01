@@ -138,12 +138,8 @@ def run_acc_batch(num_images, images, labels, tags, model, sess, max_parallel_ca
                 raw_imgs_list, labels_list, tags_list = sess.run([images, labels, tags])
                 imgs_list = read_func(raw_imgs_list)
                 total_test += len(imgs_list)
-                print(tags_list)
-                print(labels_list)
-                exit()
                 acc += sess.run(model.acc, feed_dict={model.inputs: imgs_list, model.testy: labels_list,
                                                       model.keep_probs: 1})
-
             break
     finally:
         coord.request_stop()
@@ -285,7 +281,6 @@ def split_acc_by_tags(model, sess, data_folder, snapshot_filename, data_set="tes
 # Test with different bounding boxes
 
 if __name__ == "__main__":
-
     cur_model = None
     read_func = dummy_reader
     feature_type = "images"
@@ -317,8 +312,8 @@ if __name__ == "__main__":
     load_snapshot_filename = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG3\\2.pkl"
     snapshot_save_folder = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG1k1"
     if vgg:
-        batch_size = 10
-        max_parallel_acc_calcs = 20
+        batch_size = 20
+        max_parallel_acc_calcs = 40
 
         if os.path.exists(load_snapshot_filename):
             M = pickle.load(open(load_snapshot_filename, 'rb'))
