@@ -377,7 +377,7 @@ def create_model_and_inputs(batch_size, acc_batch_size, snapshot_filename, num_i
         data_loc = temp_folder
 
     globalStep = tf.Variable(0, name='global_step', trainable=False)
-    sess = tf.Session()  # config=tf.ConfigProto(log_device_placement=True))
+    sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))
 
     if vgg:
         max_parallel_acc_calc = acc_batch_size
@@ -461,7 +461,7 @@ if __name__ == "__main__":
     from_file = True
     gradient_desc = False
     data_folder_loc = os.getenv('data_loc')
-    max_acc_batch_size = 20
+    max_acc_batch_size = 40
     #mean = get_dataset_mean(data_folder_loc)
     mean = [92.3243125, 89.39240884, 82.58156112]
 
@@ -501,7 +501,8 @@ if __name__ == "__main__":
                                                                         data_from_file=from_file,
                                                                         vgg=True,
                                                                         get_gradients=gradient_desc,
-                                                                        num_images=None, test_epochs=1, data_mean=mean)
+                                                                        num_images=None, test_epochs=None,
+                                                                        data_mean=mean)
     ses.run(initializer)
     '''
     # print("testing CorelDB")
