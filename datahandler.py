@@ -50,7 +50,7 @@ def read_file_format(filename_queue, binary_file=False, rot_to_label=False):
 
 def input_pipeline(directory, batch_size, data_set="train", feature="images", orientations=None,
                    binary_file=False, num_epochs=None, num_images=None, labeled_data=False, rand_seed=None,
-                   num_threads=10, from_file=False):
+                   num_threads=10, from_file=False, calc_smaller_batch=False):
     with tf.name_scope('InputPipeline'):
         # Reads paths of images together with their labels
         if not rand_seed:
@@ -89,7 +89,8 @@ def input_pipeline(directory, batch_size, data_set="train", feature="images", or
         else:
             print("Batching")
             image_batch, label_batch, tags_batch = tf.train.batch([image, label, tags], batch_size=batch_size,
-                                                                  capacity=capacity, num_threads=num_threads)
+                                                                  capacity=capacity, num_threads=num_threads,
+                                                                  allow_smaller_final_batch=calc_smaller_batch)
             print("Finished batching")
         return image_batch, label_batch, tags_batch, len(image_list)
 
@@ -614,7 +615,7 @@ def test_each_file_with_tf(log_filename):
 
     with tf.device("/cpu:0"):
         sess = tf.Session()
-        images, labels, tags = input_pipeline("D:\\PhotoOrientation", 1, data_set="SUN397", feature="images",
+        images, labels, tags, num_images = input_pipeline("D:\\PhotoOrientation", 1, data_set="SUN397", feature="images",
                                               orientations=[0], binary_file=False, num_epochs=1,
                                               num_images=None, labeled_data=False, rand_seed=None, num_threads=1)
         init_ops = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
@@ -717,7 +718,7 @@ def test_sets_files(data_folder, feature):
 
 
 def test_input_pipeline_from_file(directory):
-    images_batch, labels_batch, tags_batch = input_pipeline(directory, 10, data_set="test", feature="images",
+    images_batch, labels_batch, tags_batch, num_images = input_pipeline(directory, 10, data_set="test", feature="images",
                                                             orientations=[0], num_epochs=1, num_images=None,
                                                             labeled_data=False, rand_seed=None, num_threads=10,
                                                             from_file=True)
@@ -762,6 +763,43 @@ def run_tests():
     # split_SUN397(data_loc, outfolder + "\\images", overwrite=True)
     # test_input_pipeline_from_file(outfolder)
     # test_sets_files(outfolder, "images")
+
+
+def get_dataset_mean(data_loc):
+    sess = tf.Session()
+
+    images_batch, labels_batch, tags_batch, num_images = input_pipeline(data_loc, 50, data_set=None, feature="images",
+                                                                        orientations=[0], num_epochs=1, num_images=None,
+                                                                        labeled_data=False, rand_seed=None,
+                                                                        num_threads=20, from_file=False,
+                                                                        calc_smaller_batch=True)
+
+    init = tf.group(tf.local_variables_initializer(), tf.global_variables_initializer())
+    sess.run(init)
+    coord = tf.train.Coordinator()
+    threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+    rgb_data = np.zeros(3, dtype=np.float32)
+
+    steps = 0
+    try:
+        print("Calculating mean")
+        while not coord.should_stop():
+            imgs = sess.run(images_batch)
+            steps += 1
+            rgb_data += imgs.mean((0, 1, 2))
+            if steps % 100 == 0:
+                print(steps)
+    except tf.errors.OutOfRangeError:
+        print('Done epoch limit reached')
+    finally:
+        # When done, ask the threads to stop.
+        coord.request_stop()
+    coord.join(threads)
+    sess.close()
+    print("Total steps: " + str(steps))
+    if steps > 0:
+        rgb_data = rgb_data / steps
+    return rgb_data
 
 
 def run_tests_mac():

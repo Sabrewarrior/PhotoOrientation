@@ -5,7 +5,7 @@ import pickle
 import os
 import time
 import tensorflow as tf
-from datahandler import input_pipeline, convert_binary_to_array
+from datahandler import input_pipeline, convert_binary_to_array, get_dataset_mean
 from scipy.misc import imread, imresize, imsave
 import csv
 from tensorflow.python.framework import ops
@@ -26,11 +26,11 @@ def hog_model(num_images, snapshot=None, global_step=None):
                                     snapshot=snapshot)
 
 
-def vgg_model1(batch_size, fc_size, snapshot=None, global_step=None, get_gradients=False):
+def vgg_model1(batch_size, fc_size, snapshot=None, global_step=None, get_gradients=False, data_mean=None):
     learning_rate = .00001
 
     return vgg16.VGG16(batch_size, learning_rate, fc_size=fc_size, max_pool_num=5, guided_grad=get_gradients,
-                       global_step=global_step, snapshot=snapshot)
+                       global_step=global_step, snapshot=snapshot, data_mean=data_mean)
 
 
 def run_model(model, sess, train_data, valid_data, test_data, batch_size, global_step, read_func, snapshot_folder,
@@ -331,7 +331,7 @@ def get_gradient(sess, model, data):
 
 
 def create_model_and_inputs(batch_size, acc_batch_size, snapshot_filename, num_images=None, train_epochs=None,
-                            test_epochs=None, data_from_file=False, vgg=True,
+                            test_epochs=None, data_from_file=False, vgg=True, data_mean=None,
                             get_gradients=False):
     model = None
     read_func = dummy_reader
@@ -394,7 +394,8 @@ def create_model_and_inputs(batch_size, acc_batch_size, snapshot_filename, num_i
             Z['fc8_W'] = M['fc8_W'][:, :4]
             Z['fc8_b'] = M['fc8_b'][:4]
         feature_type = "images"
-        model = vgg_model1(batch_size, fc_size=4096, get_gradients=get_gradients, snapshot=Z, global_step=globalStep)
+        model = vgg_model1(batch_size, fc_size=4096, get_gradients=get_gradients, snapshot=Z, global_step=globalStep,
+                           data_mean=data_mean)
         bin_or_not = False
     else:
         max_parallel_acc_calc = acc_batch_size
@@ -454,6 +455,8 @@ if __name__ == "__main__":
     gradient_desc = True
     data_folder_loc = os.getenv('data_loc')
     max_acc_batch_size = 20
+    #mean = get_dataset_mean(data_folder_loc)
+    mean = [92.3243125, 89.39240884, 82.58156112]
 
     if from_file:
         data_folder_loc = os.path.join(os.getcwd(), "temp")
@@ -491,7 +494,7 @@ if __name__ == "__main__":
                                                                     data_from_file=from_file,
                                                                     vgg=True,
                                                                     get_gradients=gradient_desc,
-                                                                    num_images=None, test_epochs=1)
+                                                                    num_images=None, test_epochs=1, data_mean=mean)
     ses.run(initializer)
 
     '''

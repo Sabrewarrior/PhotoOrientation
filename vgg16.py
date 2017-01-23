@@ -12,17 +12,15 @@
 
 import numpy as np
 from scipy.misc import imread, imresize
-from imagenet_classes import class_names
-import os
 import tensorflow as tf
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import gen_nn_ops
 
 
 class VGG16:
-    def __init__(self, batch_size, learning_rate, max_pool_num=5, fc_size=4096, guided_grad=False, global_step=None,
-                 snapshot=None):
-
+    def __init__(self, batch_size, learning_rate, max_pool_num=5, fc_size=4096, data_mean=None,guided_grad=False,
+                 global_step=None, snapshot=None):
+        if data_mean is None:
+            data_mean = [123.68, 116.779, 103.939]
+        self.data_mean = data_mean
         self.parameters = {}
         self.tensors = {}
         self.fc_size = fc_size
@@ -76,7 +74,7 @@ class VGG16:
                     biases = snapshot[cur_conv + "_b"]
                 else:
                     kernel = tf.truncated_normal(conv_shape_list[conv_num - 1], dtype=tf.float32, stddev=1e-1)
-                    biases = tf.constant(0.0, shape=[conv_shape_list[conv_num -1][-1]], dtype=tf.float32)
+                    biases = tf.constant(0.0, shape=[conv_shape_list[conv_num - 1][-1]], dtype=tf.float32)
 
                 self.parameters.update({cur_conv + "_W": tf.Variable(kernel, name="weights")})
                 self.parameters.update({cur_conv + "_b": tf.Variable(biases, trainable=True, name="weights")})
@@ -87,12 +85,13 @@ class VGG16:
                 self.tensors.update({cur_conv: tf.nn.relu(out, name="activation_" + str(conv_num))})
                 input_name = cur_conv
 
-            return tf.nn.max_pool(self.tensors[input_name], ksize=pool_ksize, strides=pool_ksize, padding='SAME', name='pool')
+            return tf.nn.max_pool(self.tensors[input_name], ksize=pool_ksize, strides=pool_ksize, padding='SAME',
+                                  name='pool')
 
     def create_conv_layers(self, snapshot, pool_num=5):
         # zero-mean input
         with tf.name_scope('preprocess') as scope:
-            mean = tf.constant([123.68, 116.779, 103.939], dtype=tf.float32, shape=[1, 1, 1, 3], name='img_mean')
+            mean = tf.constant(self.data_mean, dtype=tf.float32, shape=[1, 1, 1, 3], name='img_mean')
             input_name = "pre_proc_images"
             self.tensors.update({input_name: tf.sub(self.inputs, mean)})
 
