@@ -91,7 +91,7 @@ def input_pipeline(directory, batch_size, data_set="train", feature="images", or
             image_batch, label_batch, tags_batch = tf.train.batch([image, label, tags], batch_size=batch_size,
                                                                   capacity=capacity, num_threads=num_threads)
             print("Finished batching")
-        return image_batch, label_batch, tags_batch
+        return image_batch, label_batch, tags_batch, len(image_list)
 
 
 def convert_binary_to_array(image_binary_list):

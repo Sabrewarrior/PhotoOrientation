@@ -18,36 +18,45 @@ import tensorflow as tf
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_nn_ops
 
-class VGG16:
-    def __init__(self, imgs, y_, learning_rate, max_pool_num=5, fc_size=4096, guided_grad=False, global_step=None, snapshot=None):
 
-        self.inputs = imgs
-        self.labels = y_
-        self.testy = tf.placeholder(tf.int32, [None, ], name="Test_y")
+class VGG16:
+    def __init__(self, batch_size, learning_rate, max_pool_num=5, fc_size=4096, guided_grad=False, global_step=None,
+                 snapshot=None):
+
         self.parameters = {}
         self.tensors = {}
         self.fc_size = fc_size
         self.global_step = global_step
         self.learning_rate = learning_rate
-        self.keep_probs = tf.Variable(1, name='keep_probs', trainable=False, dtype=tf.float32)
-        if guided_grad:
-            @ops.RegisterGradient("GuidedRelu")
-            def _guided_relu_grad(op, grad):
-                return tf.select(0. < grad, gen_nn_ops._relu_grad(grad, op.outputs[0]), tf.zeros(grad.get_shape()))
 
-            with tf.Graph().as_default() as g:
-                with g.gradient_override_map({'Relu': 'GuidedRelu'}):
-                    last_pool_name = self.create_conv_layers(snapshot, max_pool_num)
-                    self.outputs = self.fc_layers(last_pool_name, snapshot)
-        else:
+        if guided_grad:
+            self.inputs = tf.placeholder(tf.float32, shape=(batch_size, 224, 224, 3), name="Inputs")
+            self.labels = tf.placeholder(tf.int32, shape=(batch_size), name="Outputs")
+            self.testy = tf.placeholder(tf.int32, [None, ], name="Test_y")
+            self.keep_probs = tf.Variable(1, name='keep_probs', trainable=False, dtype=tf.float32)
             last_pool_name = self.create_conv_layers(snapshot, max_pool_num)
             self.outputs = self.fc_layers(last_pool_name, snapshot)
-        self.probs = tf.nn.softmax(self.outputs)
-        self.correct_predictions = tf.equal(tf.argmax(self.probs, 1), tf.to_int64(self.testy))
-        with tf.name_scope("Accuracy"):
-            self.acc = tf.reduce_mean(tf.cast(self.correct_predictions, tf.float32))
+            self.probs = tf.nn.softmax(self.outputs)
+            self.correct_predictions = tf.equal(tf.argmax(self.probs, 1), tf.to_int64(self.testy))
+            self.grad = tf.gradients(self.probs, self.inputs)
+            with tf.name_scope("Accuracy"):
+                self.acc = tf.reduce_mean(tf.cast(self.correct_predictions, tf.float32))
 
-        self.train_step = self.training()
+            self.train_step = self.training()
+        else:
+            self.inputs = tf.placeholder(tf.float32, shape=(None, 224, 224, 3), name="Inputs")
+            self.labels = tf.placeholder(tf.int32, shape=(batch_size), name="Outputs")
+            self.testy = tf.placeholder(tf.int32, [None, ], name="Test_y")
+            self.keep_probs = tf.Variable(1, name='keep_probs', trainable=False, dtype=tf.float32)
+            last_pool_name = self.create_conv_layers(snapshot, max_pool_num)
+            self.outputs = self.fc_layers(last_pool_name, snapshot)
+            self.probs = tf.nn.softmax(self.outputs)
+            self.correct_predictions = tf.equal(tf.argmax(self.probs, 1), tf.to_int64(self.testy))
+
+            with tf.name_scope("Accuracy"):
+                self.acc = tf.reduce_mean(tf.cast(self.correct_predictions, tf.float32))
+
+            self.train_step = self.training()
 
     def training(self):
         with tf.name_scope("Training"):
@@ -164,7 +173,7 @@ class VGG16:
 
 
 if __name__ == '__main__':
-    test = True
+    test = False
     # This will not work with edited VGG
     if test:
         sess = tf.Session()

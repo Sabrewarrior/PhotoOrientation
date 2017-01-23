@@ -98,8 +98,10 @@ def convert_files_to_jpeg(data_folder, outfolder):
             count += 1
             # print(page)
             if page != b'ffd8':
-                print("No")
-            else:
+                print(page.decode("UTF-8") + ": " + orig_file)
+                if orig_file.find('.db') >= 0:
+                    os.remove(orig_file)
+                    continue
                 image = imread(orig_file)
                 temp_fixed_dir = root_inner.replace(data_folder, os.path.join(outfolder, "converted_images1"))
                 if not os.path.exists(temp_fixed_dir):
@@ -114,7 +116,6 @@ def convert_files_to_jpeg(data_folder, outfolder):
                 copyfile(orig_file, temp_file_name)
 
                 wrong_file += 1
-                print(page.decode("UTF-8") + ": " + orig_file)
                 inc_files.write(orig_file + "," + page.decode("UTF-8") + "\n")
     inc_files.close()
     '''
@@ -192,11 +193,17 @@ def inputs():
 
 
 if __name__ == "__main__":
-    outfolder_loc = os.path.join(os.getcwd(), "temp", "incorrect_images")
+    outfolder_loc = os.path.join(os.getcwd(), "temp", "CorelDB", "nonJPEG1")
     print(outfolder_loc)
-    data_loc = "C:\\PhotoOrientation\\SUN397\\images"
+    data_loc = "C:\\PhotoOrientation\\CorelDB\\images"
+
+    convert_files_to_jpeg(data_loc, outfolder_loc)
+
+    '''
     inc_file = "temp\\incorrect.txt"
     copy_incorrect(data_loc, outfolder_loc,incorrect_files=inc_file)
+    '''
+
     '''data_folder_loc = os.path.join("D:\\PhotoOrientation", "SUN397", "incorrect")
     outfolder = os.path.join("D:", os.sep, "PhotoOrientation", "SUN397", "fixes")
 

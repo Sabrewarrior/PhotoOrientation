@@ -6,35 +6,41 @@ import os
 import time
 import tensorflow as tf
 from datahandler import input_pipeline, convert_binary_to_array
-from scipy.misc import imread, imresize
+from scipy.misc import imread, imresize, imsave
 import csv
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import gen_nn_ops
+
 
 
 def dummy_reader(input_data):
     return input_data
 
 
-def hog_model(batch_size, snapshot=None, global_step=None):
+def hog_model(num_images, snapshot=None, global_step=None):
     hid_layers = [(2560, tf.nn.tanh)]
     learning_rate = 0.00001
     x_width = 1764
     y_width = 4
-    return neuralnet.LayeredNetwork(batch_size, x_width, y_width, hid_layers, learning_rate, global_step=global_step,
+    return neuralnet.LayeredNetwork(num_images, x_width, y_width, hid_layers, learning_rate, global_step=global_step,
                                     snapshot=snapshot)
 
 
-def vgg_model1(batch_size, fc_size, snapshot=None, global_step=None):
+def vgg_model1(batch_size, fc_size, snapshot=None, global_step=None, get_gradients=False):
     learning_rate = .00001
-    imgs = tf.placeholder(tf.float32, shape=(None, 224, 224, 3), name="Inputs")
-    y_ = tf.placeholder(tf.int32, shape=(batch_size), name="Outputs")
-    return vgg16.VGG16(imgs,y_, learning_rate, fc_size=fc_size, max_pool_num=5,
+
+    return vgg16.VGG16(batch_size, learning_rate, fc_size=fc_size, max_pool_num=5, guided_grad=get_gradients,
                        global_step=global_step, snapshot=snapshot)
 
 
-def run_model(model, sess, global_step, read_func, data_folder, snapshot_folder):
+def run_model(model, sess, train_data, valid_data, test_data, batch_size, global_step, read_func, snapshot_folder,
+              dropout=.75):
     timers = {"batching": 0., "converting": 0., "training": 0., "testing": 0., "acc": 0., "total_tests": 0.}
+
+    # Steps at which to calculate test and valid
     test_steps = 10000
     valid_steps = 25000
+
     snapshot = {}
     coord = tf.train.Coordinator()
     threads = tf.train.start_queue_runners(sess=sess, coord=coord)
@@ -44,7 +50,7 @@ def run_model(model, sess, global_step, read_func, data_folder, snapshot_folder)
         while not coord.should_stop():
 
             now = time.time()
-            imgs, labels, tags = sess.run([image_batch, label_batch, tags_batch])
+            imgs, labels, tags = sess.run([train_data['images'], train_data['labels'], train_data['tags']])
             timers["batching"] += (time.time() - now)
 
             now = time.time()
@@ -56,7 +62,7 @@ def run_model(model, sess, global_step, read_func, data_folder, snapshot_folder)
             #     print("Train: " + str(sess.run(model.acc, feed_dict={model.inputs: imgs, model.testy: labels})))
 
             now = time.time()
-            sess.run(model.train_step, feed_dict={model.inputs: imgs, model.labels: labels})
+            sess.run(model.train_step, feed_dict={model.inputs: imgs, model.labels: labels, model.keep_probs: dropout})
             timers["training"] += (time.time() - now)
 
             # print(sess.run(model.global_step))
@@ -68,8 +74,8 @@ def run_model(model, sess, global_step, read_func, data_folder, snapshot_folder)
             if steps % test_steps == 0:
                 print(steps)
                 print("Calculating test accuracy")
-                test_acc, test_time = run_acc_batch(num_test_images, test_images, test_labels, test_tags, model, sess,
-                                                    max_parallel_calcs=max_parallel_acc_calcs)
+                test_acc, test_time = run_acc_batch(test_data, model, sess, read_func,
+                                                    max_parallel_calcs=batch_size*2)
                 timers["testing"] += test_time
                 timers["total_tests"] += 1
                 print("Test: " + str(test_acc))
@@ -81,8 +87,8 @@ def run_model(model, sess, global_step, read_func, data_folder, snapshot_folder)
 
             if steps % valid_steps == 0:
                 print("Calculating validation accuracy")
-                acc_valid, valid_time = run_acc_batch(num_valid_images, valid_images, valid_labels, valid_tags,
-                                                      model, sess, max_parallel_calcs=max_parallel_acc_calcs)
+                acc_valid, valid_time = run_acc_batch(valid_data, read_func,
+                                                      model, sess, max_parallel_calcs=batch_size*2)
 
                 print("Valid: " + str(acc_valid))
 
@@ -98,13 +104,14 @@ def run_model(model, sess, global_step, read_func, data_folder, snapshot_folder)
             # timers.append(time.time() - now)
     except tf.errors.OutOfRangeError:
         print('Done training -- epoch limit reached')
+    finally:
         print("Calculating validation accuracy")
-        acc_valid, valid_time = run_acc_batch(num_valid_images, valid_images, valid_labels, valid_tags,
-                                              model, sess, max_parallel_calcs=max_parallel_acc_calcs)
+        acc_valid, valid_time = run_acc_batch(valid_data, read_func,
+                                              model, sess, max_parallel_calcs=batch_size * 2)
 
         print("Valid: " + str(acc_valid))
         snapshot['model_acc'] = acc_valid
-    finally:
+
         # When done, ask the threads to stop.
         coord.request_stop()
     coord.join(threads)
@@ -122,20 +129,20 @@ def run_model(model, sess, global_step, read_func, data_folder, snapshot_folder)
     print("acc avg: " + str(timers["acc"]/timers["total_tests"]))
 
 
-def run_acc_batch(num_images, images, labels, tags, model, sess, max_parallel_calcs=None):
+def run_acc_batch(data, model, sess, read_func, max_parallel_calcs=None):
     acc = 0.
     total_test = 0
     now = time.time()
-    repeat_num = 1
+    repeat_num = data['num_images']
     coord = tf.train.Coordinator()
     threads = tf.train.start_queue_runners(sess=sess, coord=coord)
     if max_parallel_calcs:
-        repeat_num = num_images // max_parallel_calcs
+        repeat_num = data['num_images'] // max_parallel_calcs
     print(repeat_num)
     try:
         while not coord.should_stop():
             for i in range(repeat_num):
-                raw_imgs_list, labels_list, tags_list = sess.run([images, labels, tags])
+                raw_imgs_list, labels_list, tags_list = sess.run([data['images'], data['labels'], data['tags']])
                 imgs_list = read_func(raw_imgs_list)
                 total_test += len(imgs_list)
                 acc += sess.run(model.acc, feed_dict={model.inputs: imgs_list, model.testy: labels_list,
@@ -149,12 +156,12 @@ def run_acc_batch(num_images, images, labels, tags, model, sess, max_parallel_ca
     return acc/repeat_num, timer
 
 
-def parallel_acc_by_tags(model, sess, max_parallel_calcs, data_folder, from_file=None, data_set="test",
+def parallel_acc_by_tags(model, sess, max_parallel_calcs, data_folder, read_func, from_file=None, data_set="test",
                          feature="images", orientations=None):
     total_images = 0
     if orientations is None:
         orientations = [0, 90, 180, 270]
-    images, labels, tags = input_pipeline(data_folder_loc, max_parallel_acc_calcs, data_set=data_set,
+    images, labels, tags = input_pipeline(data_folder_loc, max_parallel_calcs, data_set=data_set,
                                           feature=feature, num_images=None,
                                           binary_file=False, orientations=orientations,
                                           from_file=from_file, num_epochs=1)
@@ -184,7 +191,7 @@ def parallel_acc_by_tags(model, sess, max_parallel_calcs, data_folder, from_file
             raw_imgs_list, labels_list, tags_list = sess.run([images, labels, tags])
             imgs_list = read_func(raw_imgs_list)
             preds = sess.run(model.correct_predictions, feed_dict={model.inputs: imgs_list, model.testy: labels_list,
-                                                                     model.keep_probs: 1})
+                                                                   model.keep_probs: 1})
             total_images += len(preds)
             incorrect_indices = np.where(preds == 0)
 
@@ -274,49 +281,102 @@ def split_acc_by_tags(model, sess, data_folder, snapshot_filename, data_set="tes
 
     sess.close()
 
-# Test by category outside of these ones
-# Take average of each category
-# Train by category and test same category
-# Abstract art
-# Test with different bounding boxes
 
-if __name__ == "__main__":
-    cur_model = None
+def get_gradient(sess, model, data):
+    coord = tf.train.Coordinator()
+    threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+    steps = 0
+    try:
+        print("Getting gradients")
+        while not coord.should_stop():
+            gradients = []
+            image_tags = []
+            steps += 1
+            imgs, labels, tags = sess.run([data['images'], data['labels'], data['tags']])
+            gradient = sess.run(model.grad, feed_dict={model.inputs: imgs, model.testy: labels, model.keep_probs: 1})
+            gradients.extend(gradient)
+            if steps % 2000 == 0:
+                print(steps)
+
+            image_tags.append(tags)
+            for i in range(len(gradients)):
+                tester = np.sum(np.sum(np.sum(gradients[i], 1), 1), 1)
+                correct_indices = np.where(tester > 0.)[0]
+                for j in correct_indices:
+                    # print(tags[i][j])
+                    # print(image.dtype)
+                    filepath = image_tags[i][j].decode('utf-8').replace(os.getenv('data_loc'),
+                                                                        os.path.join(os.getcwd(),
+                                                                                     "temp", "gradient_desc"))
+                    if not os.path.exists(os.path.split(filepath)[0]):
+                        os.makedirs(os.path.split(filepath)[0])
+
+                    imsave(filepath, gradients[i][j], format='JPEG')
+
+    except tf.errors.OutOfRangeError:
+        print('Done -- epoch limit reached')
+    finally:
+        # When done, ask the threads to stop.
+        coord.request_stop()
+    coord.join(threads)
+    sess.close()
+    '''
+        Generates a graph with the input images, classifications and gradients
+    :param images: list of numpy arrays containing images, i.e. [dog, cat, spider]
+                    in case of a single image, put it in brackets, i.e. [dog]
+    :return:
+            gradients and indices of the classes in caffe_classes
+    '''
+    return gradients, image_tags
+
+
+def create_model_and_inputs(batch_size, acc_batch_size, snapshot_filename, num_images=None, train_epochs=None,
+                            test_epochs=None, data_from_file=False, vgg=True,
+                            get_gradients=False):
+    model = None
     read_func = dummy_reader
-    feature_type = "images"
+    if vgg:
+        feature_type = "images"
+    else:
+        feature_type = "hog"
+
     data = "set1"
-    # data_folder_loc = os.path.join("C:", os.sep, "PhotoOrientation", "SUN397", data)
+    if num_images is None:
+        num_test_images = ((21596 * 4) // images_batch_size) * images_batch_size
+        num_valid_images = ((17276 * 4) // images_batch_size) * images_batch_size
+    else:
+        num_test_images = num_images
+        num_valid_images = num_images
+
     data_loc = os.getenv('data_loc')
     # print(data_folder_loc)
-    for filename in ["test.txt", "train.txt", "valid.txt"]:
-        with open(os.path.join(os.getcwd(), "datasets", data, feature_type, filename), 'r', newline='\n') as f:
-            text = f.read().split('\r\n')
-            if len(text) == 1:
-                text = text[0].split('\n')
-            print(len(text))
-            saved = []
-            for each in text:
-                if each != '':
-                    saved.append(os.path.join(data_loc, feature_type, each.split(feature_type)[1][1:]))
-        if not os.path.exists(os.path.join(os.getcwd(), "temp", feature_type)):
-            os.makedirs(os.path.join(os.getcwd(), "temp", feature_type))
-        with open(os.path.join(os.getcwd(), "temp", feature_type, filename), 'w', newline='\n') as f:
-            for each in saved:
-                f.write(each + '\n')
-    data_folder_loc = os.path.join(os.getcwd(), "temp")
+    if data_from_file:
+        temp_folder = os.path.join(os.getcwd(), "temp")
+        for filename in ["test.txt", "train.txt", "valid.txt"]:
+            with open(os.path.join(os.getcwd(), "datasets", data, feature_type, filename), 'r', newline='\n') as f:
+                text = f.read().split('\r\n')
+                if len(text) == 1:
+                    text = text[0].split('\n')
+                print(len(text))
+                saved = []
+                for each in text:
+                    if each != '':
+                        saved.append(os.path.join(data_loc, feature_type, each.split(feature_type)[1][1:]))
+            if not os.path.exists(os.path.join(temp_folder, feature_type)):
+                os.makedirs(os.path.join(temp_folder, feature_type))
+            with open(os.path.join(temp_folder, feature_type, filename), 'w', newline='\n') as f:
+                for each in saved:
+                    f.write(each + '\n')
+        data_loc = temp_folder
 
     globalStep = tf.Variable(0, name='global_step', trainable=False)
-    ses = tf.Session()  # config=tf.ConfigProto(log_device_placement=True))
+    sess = tf.Session()  # config=tf.ConfigProto(log_device_placement=True))
 
-    vgg = True
-    load_snapshot_filename = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG3\\2.pkl"
-    snapshot_save_folder = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG1k1"
     if vgg:
-        batch_size = 20
-        max_parallel_acc_calcs = 40
+        max_parallel_acc_calc = acc_batch_size
 
-        if os.path.exists(load_snapshot_filename):
-            M = pickle.load(open(load_snapshot_filename, 'rb'))
+        if os.path.exists(snapshot_filename):
+            M = pickle.load(open(snapshot_filename, 'rb'))
             print("Snapshot Loaded")
             Z = {}
             for each in M:
@@ -330,76 +390,143 @@ if __name__ == "__main__":
             for each in M:
                 Z[each] = M[each]
         if M['fc8_W'].shape[1] != 4:
+            print("resizing final weights")
             Z['fc8_W'] = M['fc8_W'][:, :4]
             Z['fc8_b'] = M['fc8_b'][:4]
         feature_type = "images"
-        cur_model = vgg_model1(batch_size, fc_size=4096, snapshot=Z, global_step=globalStep)
+        model = vgg_model1(batch_size, fc_size=4096, get_gradients=get_gradients, snapshot=Z, global_step=globalStep)
         bin_or_not = False
     else:
-        batch_size = 100
-        max_parallel_acc_calcs = 1000
-        if os.path.exists(load_snapshot_filename):
-            M = pickle.load(open(os.path.join(load_snapshot_filename), 'rb'))
+        max_parallel_acc_calc = acc_batch_size
+        if os.path.exists(snapshot_filename):
+            M = pickle.load(open(os.path.join(snapshot_filename), 'rb'))
             print("Snapshot Loaded")
         else:
             print("Snapshot not found, loading default weights")
             M = pickle.load(open("snapshotHOG\\457.pkl", 'rb'))
 
-        cur_model = hog_model(batch_size, snapshot=M, global_step=globalStep)
+        model = hog_model(batch_size, snapshot=M, global_step=globalStep)
 
         feature_type = "hog2"
         read_func = convert_binary_to_array
         bin_or_not = True
 
-    num_test_images = ((21596 * 4) // batch_size) * batch_size
-    num_valid_images = ((17276 * 4) // batch_size) * batch_size
-    training_epochs = 1
-
-    #parallel_acc_by_tags(cur_model, ses, max_parallel_acc_calcs, data_folder_loc,
-    #                     from_file=True, data_set="valid", feature="images", orientations=[0, 90, 180, 270])
-    #exit()
-
     with tf.device("/cpu:0"):
-        image_batch, label_batch, tags_batch = input_pipeline(data_folder_loc, batch_size, data_set="train",
-                                                              feature=feature_type, binary_file=bin_or_not,
-                                                              from_file=True,
-                                                              num_epochs=training_epochs)
-        test_images, test_labels, test_tags = input_pipeline(data_folder_loc, max_parallel_acc_calcs, data_set="test",
-                                                             feature=feature_type, num_images=num_test_images,
-                                                             binary_file=bin_or_not, orientations=[0, 90, 180, 270],
-                                                             from_file=True)
+        train_images, train_labels, train_tags, train_num = input_pipeline(data_loc, batch_size, data_set="train",
+                                                                           feature=feature_type, binary_file=bin_or_not,
+                                                                           from_file=data_from_file,
+                                                                           num_epochs=train_epochs)
+        test_images, test_labels, test_tags, test_num = input_pipeline(data_folder_loc, max_parallel_acc_calc,
+                                                                       data_set="test", feature=feature_type,
+                                                                       num_images=num_test_images,
+                                                                       binary_file=bin_or_not,
+                                                                       orientations=[0, 90, 180, 270],
+                                                                       from_file=data_from_file,
+                                                                       num_epochs=test_epochs)
+        valid_images, valid_labels, valid_tags, valid_num = input_pipeline(data_folder_loc, max_parallel_acc_calc,
+                                                                           data_set="valid", feature=feature_type,
+                                                                           num_images=num_valid_images,
+                                                                           binary_file=bin_or_not,
+                                                                           orientations=[0, 90, 180, 270],
+                                                                           from_file=data_from_file,
+                                                                           num_epochs=test_epochs)
 
-        valid_images, valid_labels, valid_tags = input_pipeline(data_folder_loc, max_parallel_acc_calcs,
-                                                                data_set="valid",
-                                                                feature=feature_type, num_images=num_valid_images,
-                                                                binary_file=bin_or_not, orientations=[0, 90, 180, 270],
-                                                                from_file=True)
-
+    train_data = {'images': train_images, 'labels': train_labels, 'tags': train_tags, 'num_images': train_num}
+    test_data = {'images': test_images, 'labels': test_labels, 'tags': test_tags, 'num_images': num_test_images}
+    valid_data = {'images': valid_images, 'labels': valid_labels, 'tags': valid_tags, 'num_images': num_test_images}
     init = tf.group(tf.local_variables_initializer(), tf.global_variables_initializer())
-    ses.run(init)
+
+    return sess, init, model, train_data, test_data, valid_data, read_func, globalStep
+
+
+# Test by category outside of these ones
+# Take average of each category
+# Train by category and test same category
+# Abstract art
+# Test with different bounding boxes
+
+if __name__ == "__main__":
+    cur_model=False
+    load_snapshot_filename = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG3\\2.pkl"
+    images_batch_size = 20
+    snapshot_save_folder = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG1k1"
+    from_file = True
+    gradient_desc = True
+    data_folder_loc = os.getenv('data_loc')
+    max_acc_batch_size = 20
+
+    if from_file:
+        data_folder_loc = os.path.join(os.getcwd(), "temp")
+
+    if gradient_desc:
+        @ops.RegisterGradient("GuidedRelu")
+        def _guided_relu_grad(op, grad):
+            return tf.select(0. < grad, gen_nn_ops._relu_grad(grad, op.outputs[0]), tf.zeros(grad.get_shape()))
+
+
+        max_acc_batch_size = 20
+        with tf.Graph().as_default() as g:
+            with g.gradient_override_map({'Relu': 'GuidedRelu'}):
+                ses, initializer, cur_model, \
+                    train, test, valid, data_reader, step = create_model_and_inputs(images_batch_size,
+                                                                                    max_acc_batch_size,
+                                                                                    load_snapshot_filename,
+                                                                                    data_from_file=from_file,
+                                                                                    vgg=True,
+                                                                                    get_gradients=gradient_desc,
+                                                                                    num_images=None, test_epochs=1)
+                ses.run(initializer)
+                grads, tags = get_gradient(ses, cur_model, test)
+                print(len(tags))
+                print(len(grads))
+                print(grads[0].shape)
+                calc = [0., 0.]
+
+                print(calc[0], calc[1])
+        exit()
+
+    ses, initializer, cur_model, \
+    train, test, valid, data_reader, step = create_model_and_inputs(images_batch_size, max_acc_batch_size,
+                                                                    load_snapshot_filename,
+                                                                    data_from_file=from_file,
+                                                                    vgg=True,
+                                                                    get_gradients=gradient_desc,
+                                                                    num_images=None, test_epochs=1)
+    ses.run(initializer)
+
+    '''
+    # print("testing CorelDB")
+    # data_folder_loc = os.path.join("C:", os.sep, "PhotoOrientation", "CorelDB")
+    # parallel_acc_by_tags(cur_model, ses, images_batch_size*2, data_folder_loc,
+    #                      from_file=False, data_set="", feature="images", orientations=[0, 90, 180, 270])
+    # ses.close()
+    # exit()
+    '''
 
     ''' Create a file which saves incorrect image as '(image filename), (orientation)\n'
-    # parallel_acc_by_tags(cur_model, ses, max_parallel_acc_calcs, data_folder_loc, data_set="", feature="images")
+    # parallel_acc_by_tags(cur_model, ses, images_batch_size*2, data_folder_loc, data_set="", feature="images")
+    # ses.close()
     # exit()
     '''
 
     ''' Create a file with stats for individual tags
     # split_acc_by_tags(cur_model, ses, data_folder, load_snapshot_filename, data_set="train", feature="images")
+    # ses.close()
     # exit()
     '''
 
-    # ''' Calculate individual accuracy without starting training
-    acc_valid = 0.
-    acc_valid, valid_time = run_acc_batch(num_valid_images, valid_images, valid_labels, valid_tags,
-                                          cur_model, ses, max_parallel_calcs=max_parallel_acc_calcs)
-    print("Valid: " + str(acc_valid))
-    # '''
+    ''' Calculate individual accuracy without starting training
+    # acc_valid = 0.
+    # acc_valid, valid_time = run_acc_batch(num_valid_images, valid['images'], valid['labels'], valid['tags'],
+    #                                       cur_model, ses, max_parallel_calcs=images_batch_size * 2)
+    # print("Valid: " + str(acc_valid))
+    # ses.close()
+    # exit()
+    '''
 
-    ses.close()
-
-    exit()
-    if cur_model:
+    # Run Training
+    if cur_model is not None:
         if not os.path.exists(os.path.join(data_folder_loc, snapshot_save_folder)):
             os.makedirs(os.path.join(data_folder_loc, snapshot_save_folder))
-        run_model(cur_model, ses, globalStep, read_func, data_folder_loc, snapshot_save_folder)
+        run_model(cur_model, ses, train, valid, test, images_batch_size, step, data_reader, data_folder_loc, dropout=.5)
 
