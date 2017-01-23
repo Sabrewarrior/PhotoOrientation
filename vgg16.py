@@ -120,7 +120,13 @@ class VGG16:
                 self.tensors.update({"pool5": self.convolve(5, [[3, 3, 512, 512],[3, 3, 512, 512],[3, 3, 512, 512]],
                                                             [1, 1, 1, 1], [1, 2, 2, 1], input_name, snapshot)})
                 input_name = "pool5"
-
+        else:
+            with tf.name_scope('conv5') as scope:
+                self.tensors.update({"pool5": tf.nn.max_pool(self.tensors[input_name], ksize=[1, 1, 1, 1],
+                                                             strides=[1, 2, 2, 1], padding='SAME', name='pool')})
+                input_name = "pool5"
+                shape = int(np.prod(self.tensors[input_name].get_shape()[1:]))
+                print(shape)
         return input_name
 
     def fc_layers(self, input_name, snapshot):
