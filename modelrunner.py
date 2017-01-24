@@ -94,8 +94,8 @@ def run_model(model, sess, train_data, valid_data, test_data, batch_size, global
 
             if steps % valid_steps == 0:
                 print("Calculating validation accuracy")
-                acc_valid, valid_time = run_acc_batch(valid_data, read_func,
-                                                      model, sess, max_parallel_calcs=batch_size*2)
+                acc_valid, valid_time = run_acc_batch(valid_data, model, sess, read_func,
+                                                      max_parallel_calcs=batch_size*2)
 
                 print("Valid: " + str(acc_valid))
 
