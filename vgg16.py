@@ -100,19 +100,37 @@ class VGG16:
                                                         [1, 1, 1, 1], [1, 2, 2, 1], input_name, snapshot)})
             input_name = "pool1"
 
-        with tf.name_scope('conv2') as scope:
-            self.tensors.update({"pool2": self.convolve(2, [[3, 3, 64, 128],[3, 3, 128, 128]],
-                                                        [1, 1, 1, 1], [1, 2, 2, 1], input_name, snapshot)})
-            input_name = "pool2"
+        if pool_num > 1:
+            with tf.name_scope('conv2') as scope:
+                self.tensors.update({"pool2": self.convolve(2, [[3, 3, 64, 128],[3, 3, 128, 128]],
+                                                            [1, 1, 1, 1], [1, 2, 2, 1], input_name, snapshot)})
+                input_name = "pool2"
+        else:
+            with tf.name_scope('conv2') as scope:
+                self.tensors.update({"pool2": tf.nn.max_pool(self.tensors[input_name], ksize=[1, 1, 1, 1],
+                                                             strides=[1, 2, 2, 1], padding='SAME', name='pool')})
+                input_name = "pool2"
 
-        with tf.name_scope('conv3') as scope:
-            self.tensors.update({"pool3": self.convolve(3, [[3, 3, 128, 256],[3, 3, 256, 256],[3, 3, 256, 256]],
-                                                        [1, 1, 1, 1], [1, 2, 2, 1], input_name, snapshot)})
-            input_name = "pool3"
+        if pool_num > 2:
+            with tf.name_scope('conv3') as scope:
+                self.tensors.update({"pool3": self.convolve(3, [[3, 3, 128, 256],[3, 3, 256, 256],[3, 3, 256, 256]],
+                                                            [1, 1, 1, 1], [1, 2, 2, 1], input_name, snapshot)})
+                input_name = "pool3"
+        else:
+            with tf.name_scope('conv3') as scope:
+                self.tensors.update({"pool3": tf.nn.max_pool(self.tensors[input_name], ksize=[1, 1, 1, 1],
+                                                             strides=[1, 2, 2, 1], padding='SAME', name='pool')})
+                input_name = "pool3"
+
         if pool_num > 3:
             with tf.name_scope('conv4') as scope:
                 self.tensors.update({"pool4": self.convolve(4, [[3, 3, 256, 512],[3, 3, 512, 512],[3, 3, 512, 512]],
                                                             [1, 1, 1, 1], [1, 2, 2, 1], input_name, snapshot)})
+                input_name = "pool4"
+        else:
+            with tf.name_scope('conv4') as scope:
+                self.tensors.update({"pool4": tf.nn.max_pool(self.tensors[input_name], ksize=[1, 1, 1, 1],
+                                                             strides=[1, 2, 2, 1], padding='SAME', name='pool')})
                 input_name = "pool4"
 
         if pool_num > 4:
@@ -125,8 +143,13 @@ class VGG16:
                 self.tensors.update({"pool5": tf.nn.max_pool(self.tensors[input_name], ksize=[1, 1, 1, 1],
                                                              strides=[1, 2, 2, 1], padding='SAME', name='pool')})
                 input_name = "pool5"
-                shape = int(np.prod(self.tensors[input_name].get_shape()[1:]))
-                print(shape)
+
+        if pool_num > 5:
+            with tf.name_scope('conv6') as scope:
+                self.tensors.update({"pool6": self.convolve(5,[[3, 3, 512, 1024],[3, 3, 1024, 1024],[3, 3, 1024, 1024]],
+                                                            [1, 1, 1, 1], [1, 2, 2, 1], input_name, snapshot)})
+                input_name = "pool6"
+
         return input_name
 
     def fc_layers(self, input_name, snapshot):

@@ -40,6 +40,16 @@ def vgg_model2(batch_size, fc_size, snapshot=None, global_step=None, get_gradien
                        global_step=global_step, snapshot=snapshot, data_mean=data_mean)
 
 
+def vgg_model(batch_size, fc_size=4096, max_pool_layers=5, snapshot=None, global_step=None, get_gradients=False,
+              data_mean=None):
+    learning_rate = .00001
+
+    return vgg16.VGG16(batch_size, learning_rate, fc_size=fc_size, max_pool_num=max_pool_layers,
+                       guided_grad=get_gradients,
+                       global_step=global_step, snapshot=snapshot, data_mean=data_mean)
+
+
+
 def run_model(model, sess, train_data, valid_data, test_data, batch_size, global_step, read_func, snapshot_folder,
               dropout=.75):
     timers = {"batching": 0., "converting": 0., "training": 0., "testing": 0., "acc": 0., "total_tests": 0.}
@@ -377,7 +387,7 @@ def create_model_and_inputs(batch_size, acc_batch_size, snapshot_filename, num_i
         data_loc = temp_folder
 
     globalStep = tf.Variable(0, name='global_step', trainable=False)
-    sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))
+    sess = tf.Session()  # config=tf.ConfigProto(log_device_placement=True))
 
     if vgg:
         max_parallel_acc_calc = acc_batch_size
@@ -401,8 +411,13 @@ def create_model_and_inputs(batch_size, acc_batch_size, snapshot_filename, num_i
             Z['fc8_W'] = M['fc8_W'][:, :4]
             Z['fc8_b'] = M['fc8_b'][:4]
         feature_type = "images"
-        model = vgg_model2(batch_size, fc_size=4096, get_gradients=get_gradients, snapshot=Z, global_step=globalStep,
-                           data_mean=data_mean)
+        model = vgg_model(batch_size,
+                          fc_size=4096,
+                          max_pool_layers=6,
+                          get_gradients=get_gradients,
+                          snapshot=Z,
+                          global_step=globalStep,
+                          data_mean=data_mean)
         bin_or_not = False
     else:
         max_parallel_acc_calc = acc_batch_size
