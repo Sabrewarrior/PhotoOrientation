@@ -23,6 +23,7 @@ class VGG16:
         self.data_mean = data_mean
         self.parameters = {}
         self.tensors = {}
+        self.gradients = {}
         self.fc_size = fc_size
         self.global_step = global_step
         self.learning_rate = learning_rate
@@ -35,8 +36,11 @@ class VGG16:
             last_pool_name = self.create_conv_layers(snapshot, max_pool_num)
             self.outputs = self.fc_layers(last_pool_name, snapshot)
             self.probs = tf.nn.softmax(self.outputs)
-            self.correct_predictions = tf.equal(tf.argmax(self.probs, 1), tf.to_int64(self.testy))
-            self.grad = tf.gradients(self.probs, self.inputs)
+            self.prediction = tf.argmax(self.probs, 1)
+            self.correct_predictions = tf.equal(self.prediction, tf.to_int64(self.testy))
+            self.gradients.update({"probs" : tf.gradients(self.probs, self.inputs)})
+            self.gradients.update({"outputs": tf.gradients(self.outputs, self.inputs)})
+            self.gradients.update({"preds": tf.gradients(tf.reduce_max(self.probs), self.inputs)})
             with tf.name_scope("Accuracy"):
                 self.acc = tf.reduce_mean(tf.cast(self.correct_predictions, tf.float32))
 
@@ -74,7 +78,7 @@ class VGG16:
                     biases = snapshot[cur_conv + "_b"]
                 else:
                     kernel = tf.truncated_normal(conv_shape_list[conv_num - 1], dtype=tf.float32, stddev=1e-1)
-                    biases = tf.constant(0.0, shape=[conv_shape_list[conv_num - 1][-1]], dtype=tf.float32)
+                    biases = tf.constant(1.0, shape=[conv_shape_list[conv_num - 1][-1]], dtype=tf.float32)
 
                 self.parameters.update({cur_conv + "_W": tf.Variable(kernel, name="weights")})
                 self.parameters.update({cur_conv + "_b": tf.Variable(biases, trainable=True, name="weights")})
@@ -84,6 +88,7 @@ class VGG16:
                 out = tf.nn.bias_add(conv, self.parameters[cur_conv+"_b"])
                 self.tensors.update({cur_conv: tf.nn.relu(out, name="activation_" + str(conv_num))})
                 input_name = cur_conv
+                self.gradients.update({input_name: tf.gradients(self.tensors[input_name], self.inputs)})
 
             return tf.nn.max_pool(self.tensors[input_name], ksize=pool_ksize, strides=pool_ksize, padding='SAME',
                                   name='pool')
@@ -99,6 +104,7 @@ class VGG16:
             self.tensors.update({"pool1": self.convolve(1, [[3, 3, 3, 64], [3, 3, 64, 64]],
                                                         [1, 1, 1, 1], [1, 2, 2, 1], input_name, snapshot)})
             input_name = "pool1"
+        self.gradients.update({input_name: tf.gradients(self.tensors[input_name], self.inputs)})
 
         if pool_num > 1:
             with tf.name_scope('conv2') as scope:
@@ -110,6 +116,7 @@ class VGG16:
                 self.tensors.update({"pool2": tf.nn.max_pool(self.tensors[input_name], ksize=[1, 1, 1, 1],
                                                              strides=[1, 2, 2, 1], padding='SAME', name='pool')})
                 input_name = "pool2"
+        self.gradients.update({input_name: tf.gradients(self.tensors[input_name], self.inputs)})
 
         if pool_num > 2:
             with tf.name_scope('conv3') as scope:
@@ -121,6 +128,7 @@ class VGG16:
                 self.tensors.update({"pool3": tf.nn.max_pool(self.tensors[input_name], ksize=[1, 1, 1, 1],
                                                              strides=[1, 2, 2, 1], padding='SAME', name='pool')})
                 input_name = "pool3"
+        self.gradients.update({input_name: tf.gradients(self.tensors[input_name], self.inputs)})
 
         if pool_num > 3:
             with tf.name_scope('conv4') as scope:
@@ -132,6 +140,7 @@ class VGG16:
                 self.tensors.update({"pool4": tf.nn.max_pool(self.tensors[input_name], ksize=[1, 1, 1, 1],
                                                              strides=[1, 2, 2, 1], padding='SAME', name='pool')})
                 input_name = "pool4"
+        self.gradients.update({input_name: tf.gradients(self.tensors[input_name], self.inputs)})
 
         if pool_num > 4:
             with tf.name_scope('conv5') as scope:
@@ -143,13 +152,14 @@ class VGG16:
                 self.tensors.update({"pool5": tf.nn.max_pool(self.tensors[input_name], ksize=[1, 1, 1, 1],
                                                              strides=[1, 2, 2, 1], padding='SAME', name='pool')})
                 input_name = "pool5"
+        self.gradients.update({input_name: tf.gradients(self.tensors[input_name], self.inputs)})
 
         if pool_num > 5:
             with tf.name_scope('conv6') as scope:
                 self.tensors.update({"pool6": self.convolve(5,[[3, 3, 512, 1024],[3, 3, 1024, 1024],[3, 3, 1024, 1024]],
                                                             [1, 1, 1, 1], [1, 2, 2, 1], input_name, snapshot)})
                 input_name = "pool6"
-
+                self.gradients.update({input_name: tf.gradients(self.tensors[input_name], self.inputs)})
         return input_name
 
     def fc_layers(self, input_name, snapshot):
@@ -169,7 +179,7 @@ class VGG16:
             self.parameters.update({"fc6_b": tf.Variable(bl, trainable=True, name='biases')})
             fc6l = tf.nn.bias_add(tf.matmul(final_pool_flat, self.parameters['fc6_W']), self.parameters['fc6_b'])
             self.tensors.update({'fc6': tf.nn.dropout(tf.nn.relu(fc6l, name="activation"), self.keep_probs)})
-
+            self.gradients.update({"fc6": tf.gradients(self.tensors["fc6"], self.inputs)})
         # fc7
         with tf.name_scope('fc7') as scope:
             if snapshot and (self.fc_size, self.fc_size) == snapshot['fc7_W'].shape:
@@ -184,6 +194,7 @@ class VGG16:
 
             fc7l = tf.nn.bias_add(tf.matmul(self.tensors['fc6'], self.parameters['fc7_W']), self.parameters['fc7_b'])
             self.tensors.update({'fc7': tf.nn.dropout(tf.nn.relu(fc7l, name="activation"), self.keep_probs)})
+            self.gradients.update({"fc7": tf.gradients(self.tensors["fc7"], self.inputs)})
 
         # fc8
         with tf.name_scope('fc8') as scope:

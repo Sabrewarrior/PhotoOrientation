@@ -1,10 +1,12 @@
 from shutil import copyfile
 import os
 import csv
+from scipy.misc import imread, imsave
 import numpy as np
 from PIL import Image
 import tensorflow as tf
 from datahandler import input_pipeline
+
 
 def find_num_images_by_tag(data_folder, class_names_file=None):
     print(class_names_file)
@@ -192,13 +194,72 @@ def inputs():
     return reshaped_image
 
 
+def blend_images(data_folder1, data_folder2, out_folder, alpha=.5):
+    filename_queue = tf.placeholder(dtype=tf.string)
+    label = tf.placeholder(dtype=tf.int32)
+    tensor_image = tf.read_file(filename_queue)
+
+    image = tf.image.decode_jpeg(tensor_image, channels=3)
+
+    multiplier = tf.div(tf.constant(224, tf.float32),
+                        tf.cast(tf.maximum(tf.shape(image)[0], tf.shape(image)[1]), tf.float32))
+    x = tf.cast(tf.round(tf.mul(tf.cast(tf.shape(image)[0], tf.float32), multiplier)), tf.int32)
+    y = tf.cast(tf.round(tf.mul(tf.cast(tf.shape(image)[1], tf.float32), multiplier)), tf.int32)
+    image = tf.image.resize_images(image, [x, y])
+
+    image = tf.image.rot90(image, k=label)
+
+    image = tf.image.resize_image_with_crop_or_pad(image, 224, 224)
+    sess = tf.Session()
+    sess.run(tf.local_variables_initializer())
+    for root, folders, files in os.walk(data_folder1):
+        for each in files:
+            if each.find('.jpg') >= 0:
+                img1 = Image.open(os.path.join(root, each))
+                img2_path = os.path.join(root.replace(data_folder1, data_folder2), each.split("-")[-1])
+                rotation = int(each.split("-")[1])
+                img2 = sess.run(image, feed_dict={filename_queue: img2_path, label: rotation})
+                imsave(os.path.join(os.getcwd(), "temp", "temp.jpg"), img2)
+                img2 = Image.open(os.path.join(os.getcwd(), "temp", "temp.jpg"))
+                out_image = Image.blend(img1, img2, alpha)
+                outfile = os.path.join(root.replace(data_folder1, out_folder), each)
+                if not os.path.exists(os.path.split(outfile)[0]):
+                    os.makedirs(os.path.split(outfile)[0])
+                out_image.save(outfile)
+            else:
+                print(each)
+    sess.close()
+
+
+def add_value_to_images(data_folder, out_folder, value):
+    for root, folders, files in os.walk(data_folder):
+        for each in files:
+            if each.find('.jpg') >= 0:
+                images = imread(os.path.join(root, each))
+                print(images)
+                images = images + value
+                print(images)
+                break
+                outfile = os.path.join(root.replace(data_folder, out_folder), each)
+                if not os.path.exists(os.path.split(outfile)[0]):
+                    os.makedirs(os.path.split(outfile)[0])
+                imsave(outfile, images)
+            else:
+                print(each)
+
 if __name__ == "__main__":
+    data_folder_loc = os.path.join("C:", os.sep, "PhotoOrientation", "SUN397", "images")
+    for imgs in ["incorrect", "correct"]:
+        outfolder_loc = os.path.join(os.getcwd(), "temp", "gradient_desc5", imgs, "images")
+        infolder_loc = os.path.join(os.getcwd(), "temp", "gradient_desc2", imgs, "images")
+        blend_images(infolder_loc, data_folder_loc, outfolder_loc, .1)
+    '''
     outfolder_loc = os.path.join(os.getcwd(), "temp", "CorelDB", "nonJPEG1")
     print(outfolder_loc)
     data_loc = "C:\\PhotoOrientation\\CorelDB\\images"
 
     convert_files_to_jpeg(data_loc, outfolder_loc)
-
+    '''
     '''
     inc_file = "temp\\incorrect.txt"
     copy_incorrect(data_loc, outfolder_loc,incorrect_files=inc_file)

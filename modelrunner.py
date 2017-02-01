@@ -12,7 +12,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_nn_ops
 
 
-
 def dummy_reader(input_data):
     return input_data
 
@@ -47,7 +46,6 @@ def vgg_model(batch_size, fc_size=4096, max_pool_layers=5, snapshot=None, global
     return vgg16.VGG16(batch_size, learning_rate, fc_size=fc_size, max_pool_num=max_pool_layers,
                        guided_grad=get_gradients,
                        global_step=global_step, snapshot=snapshot, data_mean=data_mean)
-
 
 
 def run_model(model, sess, train_data, valid_data, test_data, batch_size, global_step, read_func, snapshot_folder,
@@ -299,36 +297,53 @@ def split_acc_by_tags(model, sess, data_folder, snapshot_filename, data_set="tes
     sess.close()
 
 
-def get_gradient(sess, model, data):
+def get_gradient(sess, model, data, layers=None):
+    if layers is None:
+        layers = model.gradients.keys()
     coord = tf.train.Coordinator()
     threads = tf.train.start_queue_runners(sess=sess, coord=coord)
     steps = 0
     try:
         print("Getting gradients")
         while not coord.should_stop():
-            gradients = []
-            image_tags = []
-            steps += 1
             imgs, labels, tags = sess.run([data['images'], data['labels'], data['tags']])
-            gradient = sess.run(model.grad, feed_dict={model.inputs: imgs, model.testy: labels, model.keep_probs: 1})
-            gradients.extend(gradient)
+            steps += 1
+            preds = sess.run(model.prediction, feed_dict={model.inputs: imgs, model.testy: labels, model.keep_probs: 1})
+            image_tags = []
+            image_labels = []
+            image_tags.append(tags)
+            image_labels.append(labels)
+
+            for layer in layers:
+                gradients = []
+
+                gradient = sess.run(model.gradients[layer], feed_dict={model.inputs: imgs, model.testy: labels, model.keep_probs: 1})
+                gradients.extend(gradient)
+
+                for i in range(len(gradients)):
+                    tester = np.sum(np.sum(np.sum(gradients[i], 1), 1), 1)
+                    correct_indices = np.where(tester > 0.)[0]
+                    for j in correct_indices:
+                        # print(tags[i][j])
+                        # print(image.dtype)
+                        if preds[j] == image_labels[i][j]:
+                            filepath = image_tags[i][j].decode('utf-8').replace(os.getenv('data_loc'),
+                                                                                os.path.join(os.getcwd(),
+                                                                                             "temp", "gradient_desc2",
+                                                                                             "correct"))
+                        else:
+                            filepath = image_tags[i][j].decode('utf-8').replace(os.getenv('data_loc'),
+                                                                                os.path.join(os.getcwd(),
+                                                                                             "temp", "gradient_desc2",
+                                                                                             "incorrect"))
+                        if not os.path.exists(os.path.split(filepath)[0]):
+                            os.makedirs(os.path.split(filepath)[0])
+                        filepath = os.path.join(os.path.split(filepath)[0], layer + "-" + str(image_labels[i][j]) +
+                                                "-" + str(preds[j]) + "-" + os.path.split(filepath)[1])
+                        imsave(filepath, gradients[i][j], format='JPEG')
+
             if steps % 2000 == 0:
                 print(steps)
-
-            image_tags.append(tags)
-            for i in range(len(gradients)):
-                tester = np.sum(np.sum(np.sum(gradients[i], 1), 1), 1)
-                correct_indices = np.where(tester > 0.)[0]
-                for j in correct_indices:
-                    # print(tags[i][j])
-                    # print(image.dtype)
-                    filepath = image_tags[i][j].decode('utf-8').replace(os.getenv('data_loc'),
-                                                                        os.path.join(os.getcwd(),
-                                                                                     "temp", "gradient_desc"))
-                    if not os.path.exists(os.path.split(filepath)[0]):
-                        os.makedirs(os.path.split(filepath)[0])
-
-                    imsave(filepath, gradients[i][j], format='JPEG')
 
     except tf.errors.OutOfRangeError:
         print('Done -- epoch limit reached')
@@ -348,7 +363,7 @@ def get_gradient(sess, model, data):
 
 
 def create_model_and_inputs(batch_size, acc_batch_size, snapshot_filename, num_images=None, train_epochs=None,
-                            test_epochs=None, data_from_file=False, vgg=True, data_mean=None,
+                            test_epochs=None, data_from_file=False, vgg=True, model_pools=5, data_mean=None,
                             get_gradients=False):
     model = None
     read_func = dummy_reader
@@ -413,7 +428,7 @@ def create_model_and_inputs(batch_size, acc_batch_size, snapshot_filename, num_i
         feature_type = "images"
         model = vgg_model(batch_size,
                           fc_size=4096,
-                          max_pool_layers=6,
+                          max_pool_layers=model_pools,
                           get_gradients=get_gradients,
                           snapshot=Z,
                           global_step=globalStep,
@@ -469,16 +484,17 @@ def create_model_and_inputs(batch_size, acc_batch_size, snapshot_filename, num_i
 # Test with different bounding boxes
 
 if __name__ == "__main__":
+    mean = None
     cur_model=False
-    load_snapshot_filename = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGGnone\\2.pkl"
+    load_snapshot_filename = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG3\\2.pkl"
     images_batch_size = 20
     snapshot_save_folder = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG1k1"
     from_file = True
-    gradient_desc = False
+    gradient_desc = True
     data_folder_loc = os.getenv('data_loc')
     max_acc_batch_size = 40
-    #mean = get_dataset_mean(data_folder_loc)
-    mean = [92.3243125, 89.39240884, 82.58156112]
+    # mean = get_dataset_mean(data_folder_loc)
+    # mean = [92.3243125, 89.39240884, 82.58156112]
 
     if from_file:
         data_folder_loc = os.path.join(os.getcwd(), "temp")
@@ -487,9 +503,9 @@ if __name__ == "__main__":
         @ops.RegisterGradient("GuidedRelu")
         def _guided_relu_grad(op, grad):
             return tf.select(0. < grad, gen_nn_ops._relu_grad(grad, op.outputs[0]), tf.zeros(grad.get_shape()))
-
-
-        max_acc_batch_size = 20
+        gradient_layers = ["preds"]
+        images_batch_size = 5
+        max_acc_batch_size = images_batch_size
         with tf.Graph().as_default() as g:
             with g.gradient_override_map({'Relu': 'GuidedRelu'}):
                 ses, initializer, cur_model, \
@@ -499,14 +515,16 @@ if __name__ == "__main__":
                                                                                     data_from_file=from_file,
                                                                                     vgg=True,
                                                                                     get_gradients=gradient_desc,
-                                                                                    num_images=None, test_epochs=1)
+                                                                                    num_images=None,
+                                                                                    model_pools=5,
+                                                                                    test_epochs=1)
                 ses.run(initializer)
-                grads, tags = get_gradient(ses, cur_model, test)
+                grads, tags = get_gradient(ses, cur_model, test, layers=gradient_layers)
                 print(len(tags))
                 print(len(grads))
                 print(grads[0].shape)
                 calc = [0., 0.]
-
+                ses.close()
                 print(calc[0], calc[1])
         exit()
 
