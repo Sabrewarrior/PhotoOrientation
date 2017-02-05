@@ -343,14 +343,15 @@ def get_gradient(sess, model, data, layers=None):
                                                                                              "incorrect"))
                         if not os.path.exists(os.path.split(filepath)[0]):
                             os.makedirs(os.path.split(filepath)[0])
-                        filepath = os.path.join(os.path.split(filepath)[0], layer + "-orient" + str(image_labels[i][j])
-                                                + "-pred" + str(preds[j]) + "-pos-" + os.path.split(filepath)[1])
+                        file_name = str(os.path.split(filepath)[1]).split(".")[0]
+                        filepath = os.path.join(os.path.split(filepath)[0], file_name + "-" + layer + "-orient"
+                                                + str(image_labels[i][j]) + "-pred" + str(preds[j]) + "-pos" + ".jpg")
                         imsave(filepath, positive, format='JPEG')
-                        filepath = os.path.join(os.path.split(filepath)[0], layer + "-orient" + str(image_labels[i][j])
-                                                + "-pred" + str(preds[j]) + "-neg-" + os.path.split(filepath)[1])
+                        filepath = os.path.join(os.path.split(filepath)[0], file_name + "-" + layer + "-orient"
+                                                + str(image_labels[i][j]) + "-pred" + str(preds[j]) + "-neg" + ".jpg")
                         imsave(filepath, negative, format='JPEG')
-                        filepath = os.path.join(os.path.split(filepath)[0], layer + "-orient" + str(image_labels[i][j])
-                                                + "-pred" + str(preds[j]) + "-full-" + os.path.split(filepath)[1])
+                        filepath = os.path.join(os.path.split(filepath)[0], file_name + "-" + layer + "-orient"
+                                                + str(image_labels[i][j]) + "-pred" + str(preds[j]) + "-full" + ".jpg")
                         imsave(filepath, gradient[i][j], format='JPEG')
             if steps % 2000 == 0:
                 print(steps)
