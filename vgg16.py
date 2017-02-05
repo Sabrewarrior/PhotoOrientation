@@ -17,7 +17,7 @@ import tensorflow as tf
 
 class VGG16:
     def __init__(self, batch_size, learning_rate, max_pool_num=5, fc_size=4096, data_mean=None,guided_grad=False,
-                 global_step=None, snapshot=None):
+                 pre_fc=False, global_step=None, snapshot=None):
         if data_mean is None:
             data_mean = [123.68, 116.779, 103.939]
         self.data_mean = data_mean
@@ -27,17 +27,29 @@ class VGG16:
         self.fc_size = fc_size
         self.global_step = global_step
         self.learning_rate = learning_rate
+        self.batchsize = batch_size
+        self.inputs = tf.placeholder(tf.float32, shape=(batch_size, 224, 224, 3), name="Inputs")
+        self.labels = tf.placeholder(tf.int32, shape=(batch_size), name="Outputs")
+        self.testy = tf.placeholder(tf.int32, [None, ], name="Test_y")
+        self.keep_probs = tf.Variable(1, name='keep_probs', trainable=False, dtype=tf.float32)
+        last_pool_name = self.create_conv_layers(snapshot, max_pool_num, pre_layer=pre_fc)
+        self.outputs = self.fc_layers(last_pool_name, snapshot)
+        self.probs = tf.nn.softmax(self.outputs)
+        self.prediction = tf.argmax(self.probs, 1)
+        self.correct_predictions = tf.equal(self.prediction, tf.to_int64(self.testy))
+        with tf.name_scope("Accuracy"):
+            self.acc = tf.reduce_mean(tf.cast(self.correct_predictions, tf.float32))
+
+        if pre_fc:
+            self.outputs1 = tf.nn.softmax(self.tensors["fc1"])
+            self.probs1 = tf.nn.softmax(self.outputs1)
+            self.prediction1 = tf.argmax(self.probs1, 1)
+            self.correct_predictions1 = tf.equal(self.prediction1, tf.to_int64(self.testy))
+            self.train_step1 = self.training(self.outputs1)
+            with tf.name_scope("Accuracy_fc0"):
+                self.acc1 = tf.reduce_mean(tf.cast(self.correct_predictions1, tf.float32))
 
         if guided_grad:
-            self.inputs = tf.placeholder(tf.float32, shape=(batch_size, 224, 224, 3), name="Inputs")
-            self.labels = tf.placeholder(tf.int32, shape=(batch_size), name="Outputs")
-            self.testy = tf.placeholder(tf.int32, [None, ], name="Test_y")
-            self.keep_probs = tf.Variable(1, name='keep_probs', trainable=False, dtype=tf.float32)
-            last_pool_name = self.create_conv_layers(snapshot, max_pool_num)
-            self.outputs = self.fc_layers(last_pool_name, snapshot)
-            self.probs = tf.nn.softmax(self.outputs)
-            self.prediction = tf.argmax(self.probs, 1)
-            self.correct_predictions = tf.equal(self.prediction, tf.to_int64(self.testy))
             self.gradients.update({"probs" : tf.gradients(self.probs, self.inputs)})
             self.gradients.update({"outputs": tf.gradients(self.outputs, self.inputs)})
             self.gradients.update({"preds": tf.gradients(tf.reduce_max(self.probs), self.inputs)})
@@ -45,28 +57,13 @@ class VGG16:
             for each in tf.split(1, 4, self.probs):
                 self.gradients.update({"prob"+str(i): tf.gradients(each, self.inputs)})
                 i += 1
-            with tf.name_scope("Accuracy"):
-                self.acc = tf.reduce_mean(tf.cast(self.correct_predictions, tf.float32))
-
-            self.train_step = self.training()
         else:
-            self.inputs = tf.placeholder(tf.float32, shape=(None, 224, 224, 3), name="Inputs")
-            self.labels = tf.placeholder(tf.int32, shape=(batch_size), name="Outputs")
-            self.testy = tf.placeholder(tf.int32, [None, ], name="Test_y")
-            self.keep_probs = tf.Variable(1, name='keep_probs', trainable=False, dtype=tf.float32)
-            last_pool_name = self.create_conv_layers(snapshot, max_pool_num)
-            self.outputs = self.fc_layers(last_pool_name, snapshot)
-            self.probs = tf.nn.softmax(self.outputs)
-            self.correct_predictions = tf.equal(tf.argmax(self.probs, 1), tf.to_int64(self.testy))
+            # Do not train with changed relu
+            self.train_step = self.training(self.outputs)
 
-            with tf.name_scope("Accuracy"):
-                self.acc = tf.reduce_mean(tf.cast(self.correct_predictions, tf.float32))
-
-            self.train_step = self.training()
-
-    def training(self):
+    def training(self, outputs):
         with tf.name_scope("Training"):
-            entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(self.outputs, tf.to_int64(self.labels))
+            entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(outputs, tf.to_int64(self.labels))
             cost = tf.reduce_mean(entropy)
             return tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(cost, global_step=self.global_step)
 
@@ -97,12 +94,51 @@ class VGG16:
             return tf.nn.max_pool(self.tensors[input_name], ksize=pool_ksize, strides=pool_ksize, padding='SAME',
                                   name='pool')
 
-    def create_conv_layers(self, snapshot, pool_num=5):
+    def create_conv_layers(self, snapshot, pool_num=5, pre_layer=False):
         # zero-mean input
         with tf.name_scope('preprocess') as scope:
             mean = tf.constant(self.data_mean, dtype=tf.float32, shape=[1, 1, 1, 3], name='img_mean')
             input_name = "pre_proc_images"
             self.tensors.update({input_name: tf.sub(self.inputs, mean)})
+
+        if pre_layer:
+            with tf.name_scope('fc0') as scope:
+                shape = int(np.prod(self.tensors[input_name].get_shape()[1:]))
+                print(shape)
+                flat_image = tf.reshape(self.tensors[input_name], [-1, shape])
+                if snapshot and "fc0_W" in snapshot and (shape, shape) == snapshot['fc0_W'].shape:
+                    wl = snapshot['fc0_W']
+                    bl = snapshot['fc0_b']
+                    print("Snapshot found for fc0, loading weights and biases")
+                else:
+                    wl = tf.truncated_normal([shape, shape], dtype=tf.float32, stddev=1e-1)
+                    bl = tf.constant(1.0, shape=[shape], dtype=tf.float32)
+                self.parameters.update({"fc0_W": tf.Variable(wl, trainable=True, name='weights')})
+                self.parameters.update({"fc0_b": tf.Variable(bl, trainable=True, name='biases')})
+
+                fc0l = tf.nn.bias_add(tf.matmul(flat_image, self.parameters['fc0_W']),
+                                      self.parameters['fc0_b'])
+                self.tensors.update({'fc0': tf.nn.dropout(tf.nn.relu(fc0l, name="activation"), self.keep_probs)})
+                self.gradients.update({"fc0": tf.gradients(self.tensors["fc0"], self.inputs)})
+                input_name = "fc0"
+
+            # fc8
+            with tf.name_scope('fc1') as scope:
+                if snapshot and "fc1_W" in snapshot and shape == snapshot['fc1_W'].shape[0] and \
+                                4 == snapshot['fc1_W'].shape[1]:
+                    print("Snapshot found for fc1, loading weights and biases")
+                    wl = snapshot['fc1_W']
+                    bl = snapshot['fc1_b']
+                else:
+                    wl = tf.truncated_normal([shape, 4], dtype=tf.float32, stddev=1e-1)
+                    bl = tf.constant(0.1, shape=[4], dtype=tf.float32)
+                self.parameters.update({"fc1_W": tf.Variable(wl, trainable=True, name='weights')})
+                self.parameters.update({"fc1_b": tf.Variable(bl, trainable=True, name='biases')})
+                self.tensors.update({"fc1": tf.nn.bias_add(tf.matmul(self.tensors['fc0'], self.parameters['fc1_W']),
+                                                           self.parameters['fc1_b'])})
+
+            self.tensors.update({"fc0_3d": tf.reshape(self.tensors[input_name], [self.batchsize, 224, 224, 3])})
+            input_name = "fc0_3d"
 
         with tf.name_scope('conv1') as scope:
             self.tensors.update({"pool1": self.convolve(1, [[3, 3, 3, 64], [3, 3, 64, 64]],

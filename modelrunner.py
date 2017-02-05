@@ -40,12 +40,12 @@ def vgg_model2(batch_size, fc_size, snapshot=None, global_step=None, get_gradien
 
 
 def vgg_model(batch_size, fc_size=4096, max_pool_layers=5, snapshot=None, global_step=None, get_gradients=False,
-              data_mean=None):
+              data_mean=None, pre_fc=False):
     learning_rate = .00001
 
     return vgg16.VGG16(batch_size, learning_rate, fc_size=fc_size, max_pool_num=max_pool_layers,
                        guided_grad=get_gradients,
-                       global_step=global_step, snapshot=snapshot, data_mean=data_mean)
+                       global_step=global_step, snapshot=snapshot, data_mean=data_mean, pre_fc=pre_fc)
 
 
 def run_model(model, sess, train_data, valid_data, test_data, batch_size, global_step, read_func, snapshot_folder,
@@ -77,7 +77,7 @@ def run_model(model, sess, train_data, valid_data, test_data, batch_size, global
             #     print("Train: " + str(sess.run(model.acc, feed_dict={model.inputs: imgs, model.testy: labels})))
 
             now = time.time()
-            sess.run(model.train_step, feed_dict={model.inputs: imgs, model.labels: labels, model.keep_probs: dropout})
+            sess.run(model.train_step1, feed_dict={model.inputs: imgs, model.labels: labels, model.keep_probs: dropout})
             timers["training"] += (time.time() - now)
 
             # print(sess.run(model.global_step))
@@ -160,8 +160,8 @@ def run_acc_batch(data, model, sess, read_func, max_parallel_calcs=None):
                 raw_imgs_list, labels_list, tags_list = sess.run([data['images'], data['labels'], data['tags']])
                 imgs_list = read_func(raw_imgs_list)
                 total_test += len(imgs_list)
-                acc += sess.run(model.acc, feed_dict={model.inputs: imgs_list, model.testy: labels_list,
-                                                      model.keep_probs: 1})
+                acc += sess.run(model.acc1, feed_dict={model.inputs: imgs_list, model.testy: labels_list,
+                                                       model.keep_probs: 1})
             break
     finally:
         coord.request_stop()
@@ -375,7 +375,7 @@ def get_gradient(sess, model, data, layers=None):
 
 def create_model_and_inputs(batch_size, acc_batch_size, snapshot_filename, num_images=None, train_epochs=None,
                             test_epochs=None, data_from_file=False, vgg=True, model_pools=5, data_mean=None,
-                            get_gradients=False):
+                            get_gradients=False, pre_fc=False):
     model = None
     read_func = dummy_reader
     if vgg:
@@ -443,7 +443,8 @@ def create_model_and_inputs(batch_size, acc_batch_size, snapshot_filename, num_i
                           get_gradients=get_gradients,
                           snapshot=Z,
                           global_step=globalStep,
-                          data_mean=data_mean)
+                          data_mean=data_mean,
+                          pre_fc=pre_fc)
         bin_or_not = False
     else:
         max_parallel_acc_calc = acc_batch_size
@@ -499,9 +500,11 @@ if __name__ == "__main__":
     cur_model = False
     load_snapshot_filename = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG3\\2.pkl"
     images_batch_size = 20
-    snapshot_save_folder = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG1k1"
+    snapshot_save_folder = "C:\\PhotoOrientation\\data\\SUN397\\snapshots\\VGGfcTrain"
     from_file = True
-    gradient_desc = True
+    gradient_desc = False
+
+    training = not gradient_desc
     data_folder_loc = os.getenv('data_loc')
     max_acc_batch_size = 40
     # mean = get_dataset_mean(data_folder_loc)
@@ -538,17 +541,23 @@ if __name__ == "__main__":
                 ses.close()
                 print(calc[0], calc[1])
         exit()
-    '''
-    ses, initializer, cur_model, \
-        train, test, valid, data_reader, step = create_model_and_inputs(images_batch_size, max_acc_batch_size,
-                                                                        load_snapshot_filename,
-                                                                        data_from_file=from_file,
-                                                                        vgg=True,
-                                                                        get_gradients=gradient_desc,
-                                                                        num_images=None, test_epochs=None,
-                                                                        data_mean=mean)
-    ses.run(initializer)
-    '''
+
+    if training:
+        ses, initializer, cur_model, \
+            train, test, valid, data_reader, step = create_model_and_inputs(images_batch_size, max_acc_batch_size,
+                                                                            load_snapshot_filename,
+                                                                            data_from_file=from_file,
+                                                                            vgg=True,
+                                                                            get_gradients=gradient_desc,
+                                                                            num_images=None, test_epochs=None,
+                                                                            data_mean=mean,
+                                                                            pre_fc=True)
+        ses.run(initializer)
+        if cur_model is not None:
+            if not os.path.exists(snapshot_save_folder):
+                os.makedirs(snapshot_save_folder)
+            run_model(cur_model, ses, train, valid, test, images_batch_size, step, data_reader, snapshot_save_folder,
+                      dropout=.7)
     '''
     # print("testing CorelDB")
     # data_folder_loc = os.path.join("C:", os.sep, "PhotoOrientation", "CorelDB")
@@ -580,8 +589,5 @@ if __name__ == "__main__":
     '''
 
     # Run Training
-    if cur_model is not None:
-        if not os.path.exists(os.path.join(data_folder_loc, snapshot_save_folder)):
-            os.makedirs(os.path.join(data_folder_loc, snapshot_save_folder))
-        run_model(cur_model, ses, train, valid, test, images_batch_size, step, data_reader, data_folder_loc, dropout=.7)
+
 
