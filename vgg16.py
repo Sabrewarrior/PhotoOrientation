@@ -30,7 +30,7 @@ class VGG16:
         self.batchsize = batch_size
         self.inputs = tf.placeholder(tf.float32, shape=(batch_size, 224, 224, 3), name="Inputs")
         self.labels = tf.placeholder(tf.int32, shape=(batch_size), name="Outputs")
-        self.testy = tf.placeholder(tf.int32, [batch_size, ], name="Test_y")
+        self.testy = tf.placeholder(tf.int32, [None, ], name="Test_y")
         self.keep_probs = tf.Variable(1, name='keep_probs', trainable=False, dtype=tf.float32)
         last_pool_name = self.create_conv_layers(snapshot, max_pool_num, pre_layer=pre_fc)
         if max_pool_num > 0:
