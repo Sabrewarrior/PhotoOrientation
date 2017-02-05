@@ -303,6 +303,8 @@ def get_gradient(sess, model, data, layers=None):
     coord = tf.train.Coordinator()
     threads = tf.train.start_queue_runners(sess=sess, coord=coord)
     steps = 0
+
+    save_folder = "grad_desc_neg-pos_0"
     try:
         print("Getting gradients")
         while not coord.should_stop():
@@ -313,7 +315,6 @@ def get_gradient(sess, model, data, layers=None):
             image_labels = []
             image_tags.append(tags)
             image_labels.append(labels)
-
             for layer in layers:
                 gradients = []
 
@@ -322,26 +323,35 @@ def get_gradient(sess, model, data, layers=None):
 
                 for i in range(len(gradients)):
                     tester = np.sum(np.sum(np.sum(gradients[i], 1), 1), 1)
-                    correct_indices = np.where(tester > 0.)[0]
-                    for j in correct_indices:
+                    correct_indices = np.where(tester != 0.)[0]
+                    for j in correct_indices: #range(len(gradient[i])):
                         # print(tags[i][j])
                         # print(image.dtype)
+                        positive = np.array(gradient[i][j], copy=True)
+                        negative = np.array(gradient[i][j], copy=True)
+                        positive[np.where(gradient[i][j] < 0.)] = 0.
+                        negative[np.where(gradient[i][j] > 0.)] = 0.
                         if preds[j] == image_labels[i][j]:
                             filepath = image_tags[i][j].decode('utf-8').replace(os.getenv('data_loc'),
                                                                                 os.path.join(os.getcwd(),
-                                                                                             "temp", "gradient_desc2",
+                                                                                             "temp", save_folder,
                                                                                              "correct"))
                         else:
                             filepath = image_tags[i][j].decode('utf-8').replace(os.getenv('data_loc'),
                                                                                 os.path.join(os.getcwd(),
-                                                                                             "temp", "gradient_desc2",
+                                                                                             "temp", save_folder,
                                                                                              "incorrect"))
                         if not os.path.exists(os.path.split(filepath)[0]):
                             os.makedirs(os.path.split(filepath)[0])
-                        filepath = os.path.join(os.path.split(filepath)[0], layer + "-" + str(image_labels[i][j]) +
-                                                "-" + str(preds[j]) + "-" + os.path.split(filepath)[1])
-                        imsave(filepath, gradients[i][j], format='JPEG')
-
+                        filepath = os.path.join(os.path.split(filepath)[0], layer + "-orient" + str(image_labels[i][j])
+                                                + "-pred" + str(preds[j]) + "-pos-" + os.path.split(filepath)[1])
+                        imsave(filepath, positive, format='JPEG')
+                        filepath = os.path.join(os.path.split(filepath)[0], layer + "-orient" + str(image_labels[i][j])
+                                                + "-pred" + str(preds[j]) + "-neg-" + os.path.split(filepath)[1])
+                        imsave(filepath, negative, format='JPEG')
+                        filepath = os.path.join(os.path.split(filepath)[0], layer + "-orient" + str(image_labels[i][j])
+                                                + "-pred" + str(preds[j]) + "-full-" + os.path.split(filepath)[1])
+                        imsave(filepath, gradient[i][j], format='JPEG')
             if steps % 2000 == 0:
                 print(steps)
 
@@ -485,7 +495,7 @@ def create_model_and_inputs(batch_size, acc_batch_size, snapshot_filename, num_i
 
 if __name__ == "__main__":
     mean = None
-    cur_model=False
+    cur_model = False
     load_snapshot_filename = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG3\\2.pkl"
     images_batch_size = 20
     snapshot_save_folder = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG1k1"
@@ -503,7 +513,7 @@ if __name__ == "__main__":
         @ops.RegisterGradient("GuidedRelu")
         def _guided_relu_grad(op, grad):
             return tf.select(0. < grad, gen_nn_ops._relu_grad(grad, op.outputs[0]), tf.zeros(grad.get_shape()))
-        gradient_layers = ["preds"]
+        gradient_layers = ["prob0", "prob1", "prob2", "prob3"]
         images_batch_size = 5
         max_acc_batch_size = images_batch_size
         with tf.Graph().as_default() as g:
@@ -527,7 +537,7 @@ if __name__ == "__main__":
                 ses.close()
                 print(calc[0], calc[1])
         exit()
-
+    '''
     ses, initializer, cur_model, \
         train, test, valid, data_reader, step = create_model_and_inputs(images_batch_size, max_acc_batch_size,
                                                                         load_snapshot_filename,
@@ -537,6 +547,7 @@ if __name__ == "__main__":
                                                                         num_images=None, test_epochs=None,
                                                                         data_mean=mean)
     ses.run(initializer)
+    '''
     '''
     # print("testing CorelDB")
     # data_folder_loc = os.path.join("C:", os.sep, "PhotoOrientation", "CorelDB")

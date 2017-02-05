@@ -41,6 +41,10 @@ class VGG16:
             self.gradients.update({"probs" : tf.gradients(self.probs, self.inputs)})
             self.gradients.update({"outputs": tf.gradients(self.outputs, self.inputs)})
             self.gradients.update({"preds": tf.gradients(tf.reduce_max(self.probs), self.inputs)})
+            i = 0
+            for each in tf.split(1, 4, self.probs):
+                self.gradients.update({"prob"+str(i): tf.gradients(each, self.inputs)})
+                i += 1
             with tf.name_scope("Accuracy"):
                 self.acc = tf.reduce_mean(tf.cast(self.correct_predictions, tf.float32))
 
