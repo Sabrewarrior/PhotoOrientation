@@ -247,12 +247,58 @@ def add_value_to_images(data_folder, out_folder, value):
             else:
                 print(each)
 
+
+def rename_grad_desc_files():
+    for root, folder, filenames in os.walk(os.path.join(os.getcwd(), "temp", "grad_desc_neg-pos_0")):
+        print(root)
+        for each in filenames:
+
+            if each.count(".jpg") > 0:
+                if each.count("-prob") > 0:
+
+                    replacement_name = each.split("-prob")
+
+                    replacement_name[-1] = (replacement_name[-1].split("sun_")[-1]).split(".")[0]
+
+                    new_filename = "sun_" + replacement_name[-1] + "-" + replacement_name[0] + ".jpg"
+
+                    new_filepath = os.path.join(root.replace("grad_desc_neg-pos_0", "gd-0"), new_filename)
+
+                    if not os.path.exists(os.path.split(new_filepath)[0]):
+                        os.makedirs(os.path.split(new_filepath)[0])
+                    os.rename(os.path.join(root, each), new_filepath)
+
+
+def rename_grad_desc_files2():
+    for root, folder, filenames in os.walk(os.path.join(os.getcwd(), "temp", "gd-0")):
+        print(root)
+        for each in filenames:
+
+            if each.count(".jpg") > 0:
+                if each.startswith("prob"):
+
+                    replacement_name = each.split("-sun_")
+
+                    replacement_name[-1] = (replacement_name[-1].split("sun_")[-1]).split(".")[0]
+
+                    new_filename = "sun_" + replacement_name[-1] + "-" + replacement_name[0] + ".jpg"
+
+                    new_filepath = os.path.join(root, new_filename)
+
+                    if not os.path.exists(os.path.split(new_filepath)[0]):
+                        os.makedirs(os.path.split(new_filepath)[0])
+                    os.rename(os.path.join(root, each), new_filepath)
+
+
 if __name__ == "__main__":
+    rename_grad_desc_files2()
+    '''
     data_folder_loc = os.path.join("C:", os.sep, "PhotoOrientation", "SUN397", "images")
     for imgs in ["incorrect", "correct"]:
         outfolder_loc = os.path.join(os.getcwd(), "temp", "gradient_desc5", imgs, "images")
         infolder_loc = os.path.join(os.getcwd(), "temp", "gradient_desc2", imgs, "images")
         blend_images(infolder_loc, data_folder_loc, outfolder_loc, .1)
+    '''
     '''
     outfolder_loc = os.path.join(os.getcwd(), "temp", "CorelDB", "nonJPEG1")
     print(outfolder_loc)

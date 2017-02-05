@@ -30,15 +30,16 @@ class VGG16:
         self.batchsize = batch_size
         self.inputs = tf.placeholder(tf.float32, shape=(batch_size, 224, 224, 3), name="Inputs")
         self.labels = tf.placeholder(tf.int32, shape=(batch_size), name="Outputs")
-        self.testy = tf.placeholder(tf.int32, [None, ], name="Test_y")
+        self.testy = tf.placeholder(tf.int32, [batch_size, ], name="Test_y")
         self.keep_probs = tf.Variable(1, name='keep_probs', trainable=False, dtype=tf.float32)
         last_pool_name = self.create_conv_layers(snapshot, max_pool_num, pre_layer=pre_fc)
-        self.outputs = self.fc_layers(last_pool_name, snapshot)
-        self.probs = tf.nn.softmax(self.outputs)
-        self.prediction = tf.argmax(self.probs, 1)
-        self.correct_predictions = tf.equal(self.prediction, tf.to_int64(self.testy))
-        with tf.name_scope("Accuracy"):
-            self.acc = tf.reduce_mean(tf.cast(self.correct_predictions, tf.float32))
+        if max_pool_num > 0:
+            self.outputs = self.fc_layers(last_pool_name, snapshot)
+            self.probs = tf.nn.softmax(self.outputs)
+            self.prediction = tf.argmax(self.probs, 1)
+            self.correct_predictions = tf.equal(self.prediction, tf.to_int64(self.testy))
+            with tf.name_scope("Accuracy"):
+                self.acc = tf.reduce_mean(tf.cast(self.correct_predictions, tf.float32))
 
         if pre_fc:
             self.outputs1 = tf.nn.softmax(self.tensors["fc1"])
@@ -57,7 +58,7 @@ class VGG16:
             for each in tf.split(1, 4, self.probs):
                 self.gradients.update({"prob"+str(i): tf.gradients(each, self.inputs)})
                 i += 1
-        else:
+        elif max_pool_num > 0:
             # Do not train with changed relu
             self.train_step = self.training(self.outputs)
 
@@ -103,48 +104,52 @@ class VGG16:
 
         if pre_layer:
             with tf.name_scope('fc0') as scope:
-                shape = int(np.prod(self.tensors[input_name].get_shape()[1:]))
-                print(shape)
-                flat_image = tf.reshape(self.tensors[input_name], [-1, shape])
-                if snapshot and "fc0_W" in snapshot and (shape, shape) == snapshot['fc0_W'].shape:
+                #shape = int(np.prod(self.tensors[input_name].get_shape()[1:]))
+                #print(shape)
+                #flat_image = tf.reshape(self.tensors[input_name], [-1, shape])
+                if snapshot and "fc0_W" in snapshot and (150528, 150528) == snapshot['fc0_W'].shape:
                     wl = snapshot['fc0_W']
                     bl = snapshot['fc0_b']
                     print("Snapshot found for fc0, loading weights and biases")
                 else:
-                    wl = tf.truncated_normal([shape, shape], dtype=tf.float32, stddev=1e-1)
-                    bl = tf.constant(1.0, shape=[shape], dtype=tf.float32)
+                    wl = tf.truncated_normal([self.batchsize, 224, 3, 3], dtype=tf.float32, stddev=1e-1)
+                    print(wl.get_shape())
+                    # wl = tf.reshape()
+                    bl = tf.ones(shape=[3], dtype=tf.float32)
                 self.parameters.update({"fc0_W": tf.Variable(wl, trainable=True, name='weights')})
                 self.parameters.update({"fc0_b": tf.Variable(bl, trainable=True, name='biases')})
 
-                fc0l = tf.nn.bias_add(tf.matmul(flat_image, self.parameters['fc0_W']),
+                fc0l = tf.nn.bias_add(tf.matmul(self.tensors[input_name] , self.parameters['fc0_W']),
                                       self.parameters['fc0_b'])
                 self.tensors.update({'fc0': tf.nn.dropout(tf.nn.relu(fc0l, name="activation"), self.keep_probs)})
                 self.gradients.update({"fc0": tf.gradients(self.tensors["fc0"], self.inputs)})
                 input_name = "fc0"
 
-            # fc8
+            # fc1
             with tf.name_scope('fc1') as scope:
-                if snapshot and "fc1_W" in snapshot and shape == snapshot['fc1_W'].shape[0] and \
+                fc0_shape = int(np.prod(self.tensors[input_name].get_shape()[1:]))
+                print(fc0_shape)
+                flat_fc0 = tf.reshape(self.tensors[input_name], [-1, fc0_shape])
+                if snapshot and "fc1_W" in snapshot and 150528 == snapshot['fc1_W'].shape[0] and \
                                 4 == snapshot['fc1_W'].shape[1]:
                     print("Snapshot found for fc1, loading weights and biases")
                     wl = snapshot['fc1_W']
                     bl = snapshot['fc1_b']
                 else:
-                    wl = tf.truncated_normal([shape, 4], dtype=tf.float32, stddev=1e-1)
-                    bl = tf.constant(0.1, shape=[4], dtype=tf.float32)
+                    wl = tf.truncated_normal([fc0_shape, 4], dtype=tf.float32, stddev=1e-1)
+                    bl = tf.zeros(shape=[4], dtype=tf.float32)
                 self.parameters.update({"fc1_W": tf.Variable(wl, trainable=True, name='weights')})
                 self.parameters.update({"fc1_b": tf.Variable(bl, trainable=True, name='biases')})
-                self.tensors.update({"fc1": tf.nn.bias_add(tf.matmul(self.tensors['fc0'], self.parameters['fc1_W']),
+                self.tensors.update({"fc1": tf.nn.bias_add(tf.matmul(flat_fc0, self.parameters['fc1_W']),
                                                            self.parameters['fc1_b'])})
 
-            self.tensors.update({"fc0_3d": tf.reshape(self.tensors[input_name], [self.batchsize, 224, 224, 3])})
-            input_name = "fc0_3d"
 
-        with tf.name_scope('conv1') as scope:
-            self.tensors.update({"pool1": self.convolve(1, [[3, 3, 3, 64], [3, 3, 64, 64]],
-                                                        [1, 1, 1, 1], [1, 2, 2, 1], input_name, snapshot)})
-            input_name = "pool1"
-        self.gradients.update({input_name: tf.gradients(self.tensors[input_name], self.inputs)})
+        if pool_num > 0:
+            with tf.name_scope('conv1') as scope:
+                self.tensors.update({"pool1": self.convolve(1, [[3, 3, 3, 64], [3, 3, 64, 64]],
+                                                            [1, 1, 1, 1], [1, 2, 2, 1], input_name, snapshot)})
+                input_name = "pool1"
+            self.gradients.update({input_name: tf.gradients(self.tensors[input_name], self.inputs)})
 
         if pool_num > 1:
             with tf.name_scope('conv2') as scope:

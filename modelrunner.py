@@ -547,7 +547,7 @@ if __name__ == "__main__":
             train, test, valid, data_reader, step = create_model_and_inputs(images_batch_size, max_acc_batch_size,
                                                                             load_snapshot_filename,
                                                                             data_from_file=from_file,
-                                                                            vgg=True,
+                                                                            vgg=True, #model_pools=0,
                                                                             get_gradients=gradient_desc,
                                                                             num_images=None, test_epochs=None,
                                                                             data_mean=mean,
