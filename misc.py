@@ -290,6 +290,10 @@ def rename_grad_desc_files2():
                     os.rename(os.path.join(root, each), new_filepath)
 
 
+def rgb2grey(rgb):
+    return np.dot(rgb[...,:3], [0.299, 0.587, 0.114])
+
+
 if __name__ == "__main__":
     rename_grad_desc_files2()
     '''

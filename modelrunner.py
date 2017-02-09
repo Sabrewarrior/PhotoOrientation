@@ -6,11 +6,12 @@ import os
 import time
 import tensorflow as tf
 from datahandler import input_pipeline, convert_binary_to_array, get_dataset_mean
+from misc import rgb2grey
 from scipy.misc import imread, imresize, imsave
 import csv
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_nn_ops
-
+from matplotlib.pyplot import get_cmap
 
 def dummy_reader(input_data):
     return input_data
@@ -303,56 +304,63 @@ def get_gradient(sess, model, data, layers=None):
     coord = tf.train.Coordinator()
     threads = tf.train.start_queue_runners(sess=sess, coord=coord)
     steps = 0
-
-    save_folder = "grad_desc_neg-pos_0"
+    zeros = 0
+    save_folder = "gd0"
+    cmap = get_cmap('hot')
     try:
         print("Getting gradients")
         while not coord.should_stop():
             imgs, labels, tags = sess.run([data['images'], data['labels'], data['tags']])
             steps += 1
             preds = sess.run(model.prediction, feed_dict={model.inputs: imgs, model.testy: labels, model.keep_probs: 1})
-            image_tags = []
-            image_labels = []
-            image_tags.append(tags)
-            image_labels.append(labels)
+
             for layer in layers:
-                gradients = []
+                gradients = np.array(sess.run(model.gradients[layer], feed_dict={model.inputs: imgs, model.testy: labels, model.keep_probs: 1}))
+                tester = np.sum(np.sum(np.sum(gradients[0], 1), 1), 1)
+                correct_indices = np.where(tester != 0.)[0]
+                zeros += len(gradients[0]) - len(correct_indices)
+                for j in correct_indices:
+                    # print(tags[i][j])
+                    # print(image.dtype)
+                    positive = np.array(gradients[0][j], copy=True)
+                    negative = np.array(gradients[0][j], copy=True)
+                    positive[np.where(gradients[0][j] < 0.)] = 0.
+                    negative[np.where(gradients[0][j] > 0.)] = 0.
+                    negative = np.absolute(negative)
+                    full = np.array(gradients[0][j], copy=True)
 
-                gradient = sess.run(model.gradients[layer], feed_dict={model.inputs: imgs, model.testy: labels, model.keep_probs: 1})
-                gradients.extend(gradient)
+                    if preds[j] == labels[j]:
+                        filepath = tags[j].decode('utf-8').replace(os.getenv('data_loc'),
+                                                                            os.path.join(os.getcwd(),
+                                                                                         "temp", save_folder,
+                                                                                         "correct"))
+                    else:
+                        filepath = tags[j].decode('utf-8').replace(os.getenv('data_loc'),
+                                                                            os.path.join(os.getcwd(),
+                                                                                         "temp", save_folder,
+                                                                                         "incorrect"))
+                    file_name = str(os.path.split(filepath)[1]).split(".")[0]
+                    file_folder = os.path.split(filepath)[0]
+                    if not os.path.exists(os.path.split(filepath)[0]):
+                        os.makedirs(os.path.split(filepath)[0])
+                    if not os.path.isfile(os.path.join(file_folder, file_name + "-orient" + str(labels[j])
+                                                       + ".jpg")):
+                        imsave(os.path.join(file_folder, file_name + "-orient" + str(labels[j]) + ".jpg"),
+                               imgs[j], format='JPEG')
+                    filepath = os.path.join(file_folder, file_name + "-" + layer + "-orient"
+                                            + str(labels[j]) + "-pred" + str(preds[j]) + "-pos" + ".jpg")
+                    imsave(filepath, positive, format='JPEG')
+                    filepath = os.path.join(file_folder, file_name + "-" + layer + "-orient"
+                                            + str(labels[j]) + "-pred" + str(preds[j]) + "-neg" + ".jpg")
+                    imsave(filepath, negative, format='JPEG')
+                    filepath = os.path.join(file_folder, file_name + "-" + layer + "-orient"
+                                            + str(labels[j]) + "-pred" + str(preds[j]) + "-cw" + ".jpg")
 
-                for i in range(len(gradients)):
-                    tester = np.sum(np.sum(np.sum(gradients[i], 1), 1), 1)
-                    correct_indices = np.where(tester != 0.)[0]
-                    for j in correct_indices: #range(len(gradient[i])):
-                        # print(tags[i][j])
-                        # print(image.dtype)
-                        positive = np.array(gradient[i][j], copy=True)
-                        negative = np.array(gradient[i][j], copy=True)
-                        positive[np.where(gradient[i][j] < 0.)] = 0.
-                        negative[np.where(gradient[i][j] > 0.)] = 0.
-                        if preds[j] == image_labels[i][j]:
-                            filepath = image_tags[i][j].decode('utf-8').replace(os.getenv('data_loc'),
-                                                                                os.path.join(os.getcwd(),
-                                                                                             "temp", save_folder,
-                                                                                             "correct"))
-                        else:
-                            filepath = image_tags[i][j].decode('utf-8').replace(os.getenv('data_loc'),
-                                                                                os.path.join(os.getcwd(),
-                                                                                             "temp", save_folder,
-                                                                                             "incorrect"))
-                        if not os.path.exists(os.path.split(filepath)[0]):
-                            os.makedirs(os.path.split(filepath)[0])
-                        file_name = str(os.path.split(filepath)[1]).split(".")[0]
-                        filepath = os.path.join(os.path.split(filepath)[0], file_name + "-" + layer + "-orient"
-                                                + str(image_labels[i][j]) + "-pred" + str(preds[j]) + "-pos" + ".jpg")
-                        imsave(filepath, positive, format='JPEG')
-                        filepath = os.path.join(os.path.split(filepath)[0], file_name + "-" + layer + "-orient"
-                                                + str(image_labels[i][j]) + "-pred" + str(preds[j]) + "-neg" + ".jpg")
-                        imsave(filepath, negative, format='JPEG')
-                        filepath = os.path.join(os.path.split(filepath)[0], file_name + "-" + layer + "-orient"
-                                                + str(image_labels[i][j]) + "-pred" + str(preds[j]) + "-full" + ".jpg")
-                        imsave(filepath, gradient[i][j], format='JPEG')
+                    full = rgb2grey(full)
+                    full = (full - full.min()) / full.ptp()
+                    rgba_image = cmap(full)
+                    rgb_image = np.delete(rgba_image, 3, 2)
+                    imsave(filepath, rgb_image, format='JPEG')
             if steps % 2000 == 0:
                 print(steps)
 
@@ -363,6 +371,7 @@ def get_gradient(sess, model, data, layers=None):
         coord.request_stop()
     coord.join(threads)
     sess.close()
+    print(zeros)
     '''
         Generates a graph with the input images, classifications and gradients
     :param images: list of numpy arrays containing images, i.e. [dog, cat, spider]
@@ -502,7 +511,7 @@ if __name__ == "__main__":
     images_batch_size = 20
     snapshot_save_folder = "C:\\PhotoOrientation\\data\\SUN397\\snapshots\\VGGfcTrain"
     from_file = True
-    gradient_desc = False
+    gradient_desc = True
 
     training = not gradient_desc
     data_folder_loc = os.getenv('data_loc')
@@ -518,7 +527,7 @@ if __name__ == "__main__":
         def _guided_relu_grad(op, grad):
             return tf.select(0. < grad, gen_nn_ops._relu_grad(grad, op.outputs[0]), tf.zeros(grad.get_shape()))
         gradient_layers = ["prob0", "prob1", "prob2", "prob3"]
-        images_batch_size = 5
+        images_batch_size = 10
         max_acc_batch_size = images_batch_size
         with tf.Graph().as_default() as g:
             with g.gradient_override_map({'Relu': 'GuidedRelu'}):
@@ -547,7 +556,7 @@ if __name__ == "__main__":
             train, test, valid, data_reader, step = create_model_and_inputs(images_batch_size, max_acc_batch_size,
                                                                             load_snapshot_filename,
                                                                             data_from_file=from_file,
-                                                                            vgg=True, #model_pools=0,
+                                                                            vgg=True,  # model_pools=0,
                                                                             get_gradients=gradient_desc,
                                                                             num_images=None, test_epochs=None,
                                                                             data_mean=mean,
