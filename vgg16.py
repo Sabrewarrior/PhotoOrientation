@@ -28,8 +28,8 @@ class VGG16:
         self.global_step = global_step
         self.learning_rate = learning_rate
         self.batchsize = batch_size
-        self.inputs = tf.placeholder(tf.float32, shape=(batch_size, 224, 224, 3), name="Inputs")
-        self.labels = tf.placeholder(tf.int32, shape=(batch_size), name="Outputs")
+        self.inputs = tf.placeholder(tf.float32, shape=(None, 224, 224, 3), name="Inputs")
+        self.labels = tf.placeholder(tf.int32, shape=(None), name="Outputs")
         self.testy = tf.placeholder(tf.int32, [None, ], name="Test_y")
         self.keep_probs = tf.Variable(1, name='keep_probs', trainable=False, dtype=tf.float32)
         last_pool_name = self.create_conv_layers(snapshot, max_pool_num, pre_layer=pre_fc)
@@ -211,6 +211,7 @@ class VGG16:
         shape = int(np.prod(self.tensors[input_name].get_shape()[1:]))
         final_pool_flat = tf.reshape(self.tensors[input_name], [-1, shape])
         print("Shape of last conv is " + str(shape))
+
         with tf.name_scope('fc6') as scope:
             if snapshot and (shape, self.fc_size) == snapshot['fc6_W'].shape:
                 print(snapshot['fc6_W'].shape, shape)
@@ -225,14 +226,16 @@ class VGG16:
             fc6l = tf.nn.bias_add(tf.matmul(final_pool_flat, self.parameters['fc6_W']), self.parameters['fc6_b'])
             self.tensors.update({'fc6': tf.nn.dropout(tf.nn.relu(fc6l, name="activation"), self.keep_probs)})
             self.gradients.update({"fc6": tf.gradients(self.tensors["fc6"], self.inputs)})
+            shape = self.fc_size
         # fc7
+
         with tf.name_scope('fc7') as scope:
-            if snapshot and (self.fc_size, self.fc_size) == snapshot['fc7_W'].shape:
+            if snapshot and (shape, self.fc_size) == snapshot['fc7_W'].shape:
                 wl = snapshot['fc7_W']
                 bl = snapshot['fc7_b']
                 print("Snapshot found for fc7, loading weights and biases")
             else:
-                wl = tf.truncated_normal([self.fc_size, self.fc_size], dtype=tf.float32, stddev=1e-1)
+                wl = tf.truncated_normal([shape, self.fc_size], dtype=tf.float32, stddev=1e-1)
                 bl = tf.constant(1.0, shape=[self.fc_size], dtype=tf.float32)
             self.parameters.update({"fc7_W": tf.Variable(wl, trainable=True, name='weights')})
             self.parameters.update({"fc7_b": tf.Variable(bl, trainable=True, name='biases')})
@@ -240,21 +243,22 @@ class VGG16:
             fc7l = tf.nn.bias_add(tf.matmul(self.tensors['fc6'], self.parameters['fc7_W']), self.parameters['fc7_b'])
             self.tensors.update({'fc7': tf.nn.dropout(tf.nn.relu(fc7l, name="activation"), self.keep_probs)})
             self.gradients.update({"fc7": tf.gradients(self.tensors["fc7"], self.inputs)})
+            shape = self.fc_size
 
         # fc8
         with tf.name_scope('fc8') as scope:
-            if snapshot and self.fc_size == snapshot['fc8_W'].shape[0] and 4 == snapshot['fc8_W'].shape[1]:
+            if snapshot and shape == snapshot['fc8_W'].shape[0] and 4 == snapshot['fc8_W'].shape[1]:
                 print("Snapshot found for fc8, loading weights and biases")
                 wl = snapshot['fc8_W']
                 bl = snapshot['fc8_b']
             else:
-                wl = tf.truncated_normal([self.fc_size, 4], dtype=tf.float32, stddev=1e-1)
+                wl = tf.truncated_normal([shape, 4], dtype=tf.float32, stddev=1e-1)
                 bl = tf.constant(0.1, shape=[4], dtype=tf.float32)
             self.parameters.update({"fc8_W": tf.Variable(wl, trainable=True, name='weights')})
             self.parameters.update({"fc8_b": tf.Variable(bl, trainable=True, name='biases')})
 
-            return tf.nn.bias_add(tf.matmul(self.tensors['fc7'], self.parameters['fc8_W']), self.parameters['fc8_b'])
-
+            return tf.nn.bias_add(tf.matmul(self.tensors['fc6'], self.parameters['fc8_W']), self.parameters['fc8_b'])
+            #return tf.nn.bias_add(tf.matmul(final_pool_flat, self.parameters['fc8_W']), self.parameters['fc8_b'])
 
 if __name__ == '__main__':
     test = False

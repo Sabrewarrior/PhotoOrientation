@@ -44,9 +44,10 @@ def vgg_model(batch_size, fc_size=4096, max_pool_layers=5, snapshot=None, global
               data_mean=None, pre_fc=False):
     learning_rate = .00001
 
-    return vgg16.VGG16(batch_size, learning_rate, fc_size=fc_size, max_pool_num=max_pool_layers,
+    model = vgg16.VGG16(batch_size, learning_rate, fc_size=fc_size, max_pool_num=max_pool_layers,
                        guided_grad=get_gradients,
                        global_step=global_step, snapshot=snapshot, data_mean=data_mean, pre_fc=pre_fc)
+    return model
 
 
 def run_model(model, sess, train_data, valid_data, test_data, batch_size, global_step, read_func, snapshot_folder,
@@ -78,14 +79,14 @@ def run_model(model, sess, train_data, valid_data, test_data, batch_size, global
             #     print("Train: " + str(sess.run(model.acc, feed_dict={model.inputs: imgs, model.testy: labels})))
 
             now = time.time()
-            sess.run(model.train_step1, feed_dict={model.inputs: imgs, model.labels: labels, model.keep_probs: dropout})
+            sess.run(model.train_step, feed_dict={model.inputs: imgs, model.labels: labels, model.keep_probs: dropout})
             timers["training"] += (time.time() - now)
 
             # print(sess.run(model.global_step))
             if steps % 1000 == 0:
                 print("Step: " + str(steps))
 
-            steps += 1
+
 
             if steps % test_steps == 0:
                 print(steps)
@@ -116,6 +117,7 @@ def run_model(model, sess, train_data, valid_data, test_data, batch_size, global
                                                         + ".pkl"), "wb"))
 
                 print("Resume training")
+            steps += 1
             # snapshot = {}
             # timers.append(time.time() - now)
     except tf.errors.OutOfRangeError:
@@ -161,7 +163,7 @@ def run_acc_batch(data, model, sess, read_func, max_parallel_calcs=None):
                 raw_imgs_list, labels_list, tags_list = sess.run([data['images'], data['labels'], data['tags']])
                 imgs_list = read_func(raw_imgs_list)
                 total_test += len(imgs_list)
-                acc += sess.run(model.acc1, feed_dict={model.inputs: imgs_list, model.testy: labels_list,
+                acc += sess.run(model.acc, feed_dict={model.inputs: imgs_list, model.testy: labels_list,
                                                        model.keep_probs: 1})
             break
     finally:
@@ -379,7 +381,7 @@ def get_gradient(sess, model, data, layers=None):
     :return:
             gradients and indices of the classes in caffe_classes
     '''
-    return gradients, image_tags
+    return gradients, tags
 
 
 def create_model_and_inputs(batch_size, acc_batch_size, snapshot_filename, num_images=None, train_epochs=None,
@@ -474,21 +476,22 @@ def create_model_and_inputs(batch_size, acc_batch_size, snapshot_filename, num_i
         train_images, train_labels, train_tags, train_num = input_pipeline(data_loc, batch_size, data_set="train",
                                                                            feature=feature_type, binary_file=bin_or_not,
                                                                            from_file=data_from_file,
-                                                                           num_epochs=train_epochs)
+                                                                           orientations=[0, 90, 180, 270],
+                                                                           num_epochs=train_epochs, labeled_data=True)
         test_images, test_labels, test_tags, test_num = input_pipeline(data_folder_loc, max_parallel_acc_calc,
                                                                        data_set="test", feature=feature_type,
-                                                                       num_images=num_test_images,
+                                                                       num_images=None,
                                                                        binary_file=bin_or_not,
                                                                        orientations=[0, 90, 180, 270],
                                                                        from_file=data_from_file,
-                                                                       num_epochs=test_epochs)
+                                                                       num_epochs=test_epochs, labeled_data=True)
         valid_images, valid_labels, valid_tags, valid_num = input_pipeline(data_folder_loc, max_parallel_acc_calc,
                                                                            data_set="valid", feature=feature_type,
-                                                                           num_images=num_valid_images,
+                                                                           num_images=None,
                                                                            binary_file=bin_or_not,
                                                                            orientations=[0, 90, 180, 270],
                                                                            from_file=data_from_file,
-                                                                           num_epochs=test_epochs)
+                                                                           num_epochs=test_epochs, labeled_data=True)
 
     train_data = {'images': train_images, 'labels': train_labels, 'tags': train_tags, 'num_images': train_num}
     test_data = {'images': test_images, 'labels': test_labels, 'tags': test_tags, 'num_images': num_test_images}
@@ -498,6 +501,35 @@ def create_model_and_inputs(batch_size, acc_batch_size, snapshot_filename, num_i
     return sess, init, model, train_data, test_data, valid_data, read_func, globalStep
 
 
+def single_run():
+    snapshot_filename = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG3\\2.pkl"
+    data_loc = "D:\\Storage\\iPhone Photos"
+    batch_size = 40
+    feature_type = ""
+    with tf.device("/cpu:0"):
+        data_images, data_labels, data_tags, data_images_num = input_pipeline(data_loc, batch_size, data_set=None,
+                                                                           feature=None, binary_file=False,
+                                                                           from_file=False,
+                                                                           orientations=[0, 90, 180, 270],
+                                                                           num_epochs=1, labeled_data=False)
+        data = {'images': data_images, 'labels': data_labels, 'tags': data_tags, 'num_images': data_images_num}
+    read_func = dummy_reader
+
+    globalStep = tf.Variable(0, name='global_step', trainable=False)
+    sess = tf.Session()  # config=tf.ConfigProto(log_device_placement=True))
+    if os.path.exists(snapshot_filename):
+        M = pickle.load(open(snapshot_filename, 'rb'))
+        print("Snapshot Loaded")
+    model = vgg_model(batch_size,
+                      fc_size=4096,
+                      max_pool_layers=5,
+                      get_gradients=False,
+                      snapshot=M,
+                      global_step=globalStep,
+                      )
+    run_acc_batch(data, model, ses, read_func, batch_size)
+
+
 # Test by category outside of these ones
 # Take average of each category
 # Train by category and test same category
@@ -505,13 +537,15 @@ def create_model_and_inputs(batch_size, acc_batch_size, snapshot_filename, num_i
 # Test with different bounding boxes
 
 if __name__ == "__main__":
+    single_run()
+    exit()
     mean = None
     cur_model = False
     load_snapshot_filename = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG3\\2.pkl"
     images_batch_size = 20
-    snapshot_save_folder = "C:\\PhotoOrientation\\data\\SUN397\\snapshots\\VGGfcTrain"
-    from_file = True
-    gradient_desc = True
+    snapshot_save_folder = "C:\\PhotoOrientation\\data\\SUN397\\snapshots\\vggFlickr"
+    from_file = False
+    gradient_desc = False
 
     training = not gradient_desc
     data_folder_loc = os.getenv('data_loc')
@@ -560,11 +594,12 @@ if __name__ == "__main__":
                                                                             get_gradients=gradient_desc,
                                                                             num_images=None, test_epochs=None,
                                                                             data_mean=mean,
-                                                                            pre_fc=True)
+                                                                            pre_fc=False)
         ses.run(initializer)
-        if cur_model is not None:
+        if isinstance(cur_model, vgg16.VGG16):
             if not os.path.exists(snapshot_save_folder):
                 os.makedirs(snapshot_save_folder)
+            # run_acc_batch(valid, cur_model, ses, data_reader, max_parallel_calcs=40)
             run_model(cur_model, ses, train, valid, test, images_batch_size, step, data_reader, snapshot_save_folder,
                       dropout=.7)
     '''
