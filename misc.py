@@ -268,6 +268,46 @@ def rename_grad_desc_files():
                         os.makedirs(os.path.split(new_filepath)[0])
                     os.rename(os.path.join(root, each), new_filepath)
 
+def edge_detect():
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from scipy import ndimage as ndi
+
+    from skimage import feature
+    edge_detector = feature.canny
+    # Generate noisy image of a square
+    im = imread('C:\\PycharmProjects\\PhotoOrientation-Web\\frontend\\static\\images\\gd1\\incorrect\\images\\a\\apartment_building\\outdoor\\sun_abmlchngbzrrapkw-orient2.jpg')
+    imsave(os.path.join(os.getcwd(), "temp", "edge_detect", "orig-orient2.jpg"), im)
+    #im = ndi.rotate(im, 15, mode='constant')
+    #im = ndi.gaussian_filter(im, 4)
+    #im += 0.2 * np.random.random(im.shape)
+    im = rgb2grey(im)
+    # Compute the Canny filter for two values of sigma
+    edges = []
+
+    # display results
+    fig, subplots = \
+        plt.subplots(nrows=3, ncols=6, figsize=(14, 9), sharex=True, sharey=True)
+
+    #edges.append(im)
+    for x in range(0, 5*4):
+        edges.append(edge_detector(im, sigma=x))
+    subplots[0][0].imshow(im, cmap=plt.get_cmap('jet'))
+
+    subplots[0][0].axis('off')
+    subplots[0][0].set_title('Heatmap', fontsize=12, y=.90)
+    for i in range(len(subplots)):
+        for j in range(len(subplots[i])):
+            if i + j != 0:
+                subplots[i][j].imshow(edges[i*3 + j - 1], cmap=plt.get_cmap('gray'))
+                subplots[i][j].axis('off')
+                subplots[i][j].set_title('Canny filter, $\sigma=$' + str(i*3 + j - 1), fontsize=12, y=.90)
+                imsave(os.path.join(os.getcwd(), "temp", "edge_detect", "canny-sigma" + str(i*3 + j - 1) + ".jpg"),
+                       edges[i*3 + j - 1])
+    plt.subplots_adjust(wspace=0.04, hspace=0.0, top=0.96,
+                        bottom=0.04, left=0.02, right=0.98)
+    plt.show()
+
 
 def rename_grad_desc_files2():
     for root, folder, filenames in os.walk(os.path.join(os.getcwd(), "temp", "gd-0")):
@@ -295,7 +335,10 @@ def rgb2grey(rgb):
 
 
 if __name__ == "__main__":
+    edge_detect()
+    '''
     rename_grad_desc_files2()
+    '''
     '''
     data_folder_loc = os.path.join("C:", os.sep, "PhotoOrientation", "SUN397", "images")
     for imgs in ["incorrect", "correct"]:

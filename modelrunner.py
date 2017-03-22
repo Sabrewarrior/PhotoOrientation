@@ -55,8 +55,8 @@ def run_model(model, sess, train_data, valid_data, test_data, batch_size, global
     timers = {"batching": 0., "converting": 0., "training": 0., "testing": 0., "acc": 0., "total_tests": 0.}
 
     # Steps at which to calculate test and valid
-    test_steps = 10000
-    valid_steps = 25000
+    test_steps = 2000
+    valid_steps = 5000
 
     snapshot = {}
     coord = tf.train.Coordinator()
@@ -307,15 +307,16 @@ def get_gradient(sess, model, data, layers=None):
     threads = tf.train.start_queue_runners(sess=sess, coord=coord)
     steps = 0
     zeros = 0
-    save_folder = "gd0"
-    cmap = get_cmap('hot')
+    save_folder = "gd1"
+    cmap = get_cmap('jet')
     try:
         print("Getting gradients")
         while not coord.should_stop():
             imgs, labels, tags = sess.run([data['images'], data['labels'], data['tags']])
             steps += 1
-            preds = sess.run(model.prediction, feed_dict={model.inputs: imgs, model.testy: labels, model.keep_probs: 1})
-
+            probs = sess.run(model.probs, feed_dict={model.inputs: imgs, model.testy: labels, model.keep_probs: 1})
+            print(probs[0])
+            preds = np.argmax(probs, 1)
             for layer in layers:
                 gradients = np.array(sess.run(model.gradients[layer], feed_dict={model.inputs: imgs, model.testy: labels, model.keep_probs: 1}))
                 tester = np.sum(np.sum(np.sum(gradients[0], 1), 1), 1)
@@ -341,6 +342,7 @@ def get_gradient(sess, model, data, layers=None):
                                                                             os.path.join(os.getcwd(),
                                                                                          "temp", save_folder,
                                                                                          "incorrect"))
+                    pct = "{0:.0f}".format(probs[j][int(layer[-1])] * 100)
                     file_name = str(os.path.split(filepath)[1]).split(".")[0]
                     file_folder = os.path.split(filepath)[0]
                     if not os.path.exists(os.path.split(filepath)[0]):
@@ -350,13 +352,13 @@ def get_gradient(sess, model, data, layers=None):
                         imsave(os.path.join(file_folder, file_name + "-orient" + str(labels[j]) + ".jpg"),
                                imgs[j], format='JPEG')
                     filepath = os.path.join(file_folder, file_name + "-" + layer + "-orient"
-                                            + str(labels[j]) + "-pred" + str(preds[j]) + "-pos" + ".jpg")
+                                            + str(labels[j]) + "-pred" + str(preds[j]) + "-pct" + pct + "-pos" + ".jpg")
                     imsave(filepath, positive, format='JPEG')
                     filepath = os.path.join(file_folder, file_name + "-" + layer + "-orient"
-                                            + str(labels[j]) + "-pred" + str(preds[j]) + "-neg" + ".jpg")
+                                            + str(labels[j]) + "-pred" + str(preds[j]) + "-pct" + pct + "-neg" + ".jpg")
                     imsave(filepath, negative, format='JPEG')
                     filepath = os.path.join(file_folder, file_name + "-" + layer + "-orient"
-                                            + str(labels[j]) + "-pred" + str(preds[j]) + "-cw" + ".jpg")
+                                            + str(labels[j]) + "-pred" + str(preds[j]) + "-pct" + pct + "-cw" + ".jpg")
 
                     full = rgb2grey(full)
                     full = (full - full.min()) / full.ptp()
@@ -393,16 +395,16 @@ def create_model_and_inputs(batch_size, acc_batch_size, snapshot_filename, num_i
         feature_type = "images"
     else:
         feature_type = "hog"
-
-    data = "set1"
-    if num_images is None:
+    data_loc = os.getenv('data_loc')
+    data = "CorelDB\\set1"
+    if (not from_file and data_loc.count("SUN")) > 0 or (from_file and data.count("SUN") > 0):
         num_test_images = ((21596 * 4) // images_batch_size) * images_batch_size
         num_valid_images = ((17276 * 4) // images_batch_size) * images_batch_size
-    else:
-        num_test_images = num_images
-        num_valid_images = num_images
 
-    data_loc = os.getenv('data_loc')
+    if (from_file and data.count("Corel") > 0) or (not from_file and data_loc.count("Corel") > 0):
+        num_test_images = images_batch_size * (8632 // images_batch_size)
+        num_valid_images = images_batch_size * (6892 // images_batch_size)
+
     # print(data_folder_loc)
     if data_from_file:
         temp_folder = os.path.join(os.getcwd(), "temp")
@@ -477,25 +479,25 @@ def create_model_and_inputs(batch_size, acc_batch_size, snapshot_filename, num_i
                                                                            feature=feature_type, binary_file=bin_or_not,
                                                                            from_file=data_from_file,
                                                                            orientations=[0, 90, 180, 270],
-                                                                           num_epochs=train_epochs, labeled_data=True)
+                                                                           num_epochs=train_epochs, labeled_data=False)
         test_images, test_labels, test_tags, test_num = input_pipeline(data_folder_loc, max_parallel_acc_calc,
                                                                        data_set="test", feature=feature_type,
                                                                        num_images=None,
                                                                        binary_file=bin_or_not,
                                                                        orientations=[0, 90, 180, 270],
                                                                        from_file=data_from_file,
-                                                                       num_epochs=test_epochs, labeled_data=True)
+                                                                       num_epochs=test_epochs, labeled_data=False)
         valid_images, valid_labels, valid_tags, valid_num = input_pipeline(data_folder_loc, max_parallel_acc_calc,
                                                                            data_set="valid", feature=feature_type,
                                                                            num_images=None,
                                                                            binary_file=bin_or_not,
                                                                            orientations=[0, 90, 180, 270],
                                                                            from_file=data_from_file,
-                                                                           num_epochs=test_epochs, labeled_data=True)
+                                                                           num_epochs=test_epochs, labeled_data=False)
 
     train_data = {'images': train_images, 'labels': train_labels, 'tags': train_tags, 'num_images': train_num}
     test_data = {'images': test_images, 'labels': test_labels, 'tags': test_tags, 'num_images': num_test_images}
-    valid_data = {'images': valid_images, 'labels': valid_labels, 'tags': valid_tags, 'num_images': num_test_images}
+    valid_data = {'images': valid_images, 'labels': valid_labels, 'tags': valid_tags, 'num_images': num_valid_images}
     init = tf.group(tf.local_variables_initializer(), tf.global_variables_initializer())
 
     return sess, init, model, train_data, test_data, valid_data, read_func, globalStep
@@ -537,14 +539,12 @@ def single_run():
 # Test with different bounding boxes
 
 if __name__ == "__main__":
-    single_run()
-    exit()
     mean = None
     cur_model = False
     load_snapshot_filename = "C:\\PhotoOrientation\\data\\SUN397\\snapshotVGG3\\2.pkl"
     images_batch_size = 20
-    snapshot_save_folder = "C:\\PhotoOrientation\\data\\SUN397\\snapshots\\vggFlickr"
-    from_file = False
+    snapshot_save_folder = "C:\\PhotoOrientation\\data\\SUN397\\snapshots\\vggCorel"
+    from_file = True
     gradient_desc = False
 
     training = not gradient_desc
@@ -561,7 +561,7 @@ if __name__ == "__main__":
         def _guided_relu_grad(op, grad):
             return tf.select(0. < grad, gen_nn_ops._relu_grad(grad, op.outputs[0]), tf.zeros(grad.get_shape()))
         gradient_layers = ["prob0", "prob1", "prob2", "prob3"]
-        images_batch_size = 10
+        images_batch_size = 5
         max_acc_batch_size = images_batch_size
         with tf.Graph().as_default() as g:
             with g.gradient_override_map({'Relu': 'GuidedRelu'}):

@@ -39,7 +39,7 @@ def read_file_format(filename_queue, binary_file=False, rot_to_label=False):
                             tf.cast(tf.maximum(tf.shape(image)[0], tf.shape(image)[1]), tf.float32))
         x = tf.cast(tf.round(tf.mul(tf.cast(tf.shape(image)[0], tf.float32), multiplier)), tf.int32)
         y = tf.cast(tf.round(tf.mul(tf.cast(tf.shape(image)[1], tf.float32), multiplier)), tf.int32)
-        image = tf.image.resize_images(image, [x, y])
+        image = tf.image.resize_images(image, [x, y], method=tf.image.ResizeMethod.BILINEAR)
 
         if rot_to_label:
             image = tf.image.rot90(image, k=label)
@@ -549,7 +549,7 @@ def hog_batch(input_folder, out_folder, image_folder_depth=3, label="hog"):
     pickle.dump(corrupted, open(os.path.join(out_folder, "invalid_hog.log"), "wb"))
 
 
-def split_SUN397(data_loc, out_folder, overwrite=False):
+def split_database(data_loc, out_folder, overwrite=False):
     data_loc = os.path.normpath(os.path.expandvars(os.path.expanduser(data_loc)))
     print(data_loc)
     test_set = []
@@ -568,9 +568,9 @@ def split_SUN397(data_loc, out_folder, overwrite=False):
             filenames = [os.path.join(root, x) for x in filenames]
             count += len(filenames)
             shuffle(filenames)
-            test_set.extend(filenames[:len(filenames)//5])
+            valid_set.extend(filenames[:len(filenames)//5])
             temp_set = filenames[len(filenames)//5:]
-            valid_set.extend(temp_set[:len(temp_set)//5])
+            test_set.extend(temp_set[:len(temp_set)//5])
             train_set.extend(temp_set[len(temp_set)//5:])
     with open(os.path.join(out_folder, "valid.txt"), "w", newline='\n') as f:
         for filename in valid_set:
@@ -803,8 +803,8 @@ def get_dataset_mean(data_loc):
 
 
 def run_tests_mac():
-    # split_SUN397("~/Documents/SUN397/images", "")
-    test_read_file_format("~/Documents")
+    split_database("C:\\PhotoOrientation\\CorelDB\\", os.path.join(os.getcwd(), "datasets", "CorelDB", "set1"))
+    #test_read_file_format("~/Documents")
 
 if __name__ == "__main__":
     t = int(time.time())
@@ -813,5 +813,5 @@ if __name__ == "__main__":
     # hog_batch("/home/ujash/nvme/data2","/home/ujash/nvme/data2", label="hog2")
     # resize_batch("/home/ujash/images_flickr/down1","/home/ujash/images_flickr/down4")
     # handler("/home/ujash/nvme/down4","/home/ujash/nvme/data2")
-    run_tests()
+    run_tests_mac()
     # run_tests_mac()

@@ -42,6 +42,7 @@ class VGG16:
                 self.acc = tf.reduce_mean(tf.cast(self.correct_predictions, tf.float32))
 
         if pre_fc:
+            ## THIS IS WRONG
             self.outputs1 = tf.nn.softmax(self.tensors["fc1"])
             self.probs1 = tf.nn.softmax(self.outputs1)
             self.prediction1 = tf.argmax(self.probs1, 1)
@@ -64,7 +65,7 @@ class VGG16:
 
     def training(self, outputs):
         with tf.name_scope("Training"):
-            entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(outputs, tf.to_int64(self.labels))
+            entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=tf.to_int64(self.labels), logits=outputs)
             cost = tf.reduce_mean(entropy)
             return tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(cost, global_step=self.global_step)
 
